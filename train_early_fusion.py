@@ -386,7 +386,7 @@ def main():
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"FCEF_{train_ds.DATASET_NAME}chip{CONFIG['chip_size']}_t{T}_without_sensor",
+        name=f"FCEF_{train_ds.DATASET_NAME}_chip{CONFIG['chip_size']}_t{T}",
         config={
             "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],
@@ -406,7 +406,6 @@ def main():
             "train_ratio": CONFIG["train_ratio"],
             "val_ratio": CONFIG["val_ratio"],
             "test_ratio": CONFIG["test_ratio"],
-            "preprocessing": "64x64_chips_no_patching",
         },
     )
     print("✓ WandB initialized")

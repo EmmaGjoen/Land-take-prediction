@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=rm_sensor
+#SBATCH --job-name=fcef
 #SBATCH --account=share-ie-idi
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
