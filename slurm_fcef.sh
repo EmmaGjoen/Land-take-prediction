@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=crop_moved
+#SBATCH --job-name=rm_sensor
 #SBATCH --account=share-ie-idi
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
@@ -33,7 +33,7 @@ cd "$WORKDIR"
 source .venv/bin/activate
 
 # Get .env variables (like wandb api key)
-export $(grep -v '^#' /cluster/home/$USER/Land-Take-Prediction-Project-NINA-/.env | xargs)
+export $(grep -v '^#' /cluster/home/$USER/Land-take-prediction/.env | xargs)
 
 # Install/update packages to ensure compatibility
 echo "Installing/updating packages..."
