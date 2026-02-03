@@ -6,7 +6,6 @@ from torch.utils.data import Dataset
 
 from src.config import (
     SENTINEL_DIR,
-    VHR_DIR,
     MASK_DIR,
 )
 
@@ -32,34 +31,29 @@ def find_file_by_prefix(base_dir: Path, fid: str) -> Path:
     return candidates[0]
 
 
-class TimeSeriesDataset(Dataset):
+class SentinelDataset(Dataset):
+    DATASET_NAME = "sentinel"
     """
     Loads time series data and reshapes it into (T, C, H, W)
     so it can be fed directly to temporal models (like the FCEF baseline).
 
-    Works with pre-cropped 64×64 chips. Each chip is a single sample.
-
     Assumptions:
       - `ids` are REFIDs that match the *prefix* of the filenames in
-        SENTINEL_DIR / VHR_DIR / MASK_DIR.
-      - All chips are already cropped to 64×64 pixels on disk.
+        SENTINEL_DIR / MASK_DIR.
     """
 
     def __init__(
         self,
         ids,
         transform,
-        sensor: str = "sentinel",
         slice_mode: str = None,
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
-        sensor: "sentinel" or "vhr"
         slice_mode: None or "first_half"
         transform: Transform to apply (flips, rotations, normalization)
         """
         self.ids = ids
-        self.sensor = sensor.lower()
         self.slice_mode = slice_mode
         self.transform = transform
 
@@ -68,13 +62,7 @@ class TimeSeriesDataset(Dataset):
         self.mask_paths: dict[str, Path] = {}
 
         for fid in self.ids:
-            if self.sensor == "sentinel":
-                img_path = find_file_by_prefix(SENTINEL_DIR, fid)
-            elif self.sensor == "vhr":
-                img_path = find_file_by_prefix(VHR_DIR, fid)
-            else:
-                raise ValueError(f"Unknown sensor: {self.sensor}")
-
+            img_path = find_file_by_prefix(SENTINEL_DIR, fid)
             mask_path = find_file_by_prefix(MASK_DIR, fid)
 
             self.img_paths[fid] = img_path
@@ -97,25 +85,15 @@ class TimeSeriesDataset(Dataset):
         with rasterio.open(mask_path) as src_m:
             mask = src_m.read(1)  # (H, W)
 
-        # 2) reshape to (T, C, H, W) depending on sensor
-        if self.sensor == "sentinel":
-            # Expected layout: 126 = 7 years * 2 quarters * 9 bands
-            num_bands, H, W = img.shape
-            if num_bands != 126:
-                raise ValueError(
-                    f"Expected 126 bands for Sentinel, got {num_bands} for {fid} at {img_path}"
-                )
-            img = img.reshape(7, 2, 9, H, W)
-            img = img.reshape(14, 9, H, W)
-
-        elif self.sensor == "vhr":
-            # Expected layout: 6 = 2 times * 3 bands
-            num_bands, H, W = img.shape
-            if num_bands != 6:
-                raise ValueError(
-                    f"Expected 6 bands for VHR, got {num_bands} for {fid} at {img_path}"
-                )
-            img = img.reshape(2, 3, H, W)
+        # 2) reshape to (T, C, H, W)
+        # Expected layout: 126 = 7 years * 2 quarters * 9 bands
+        num_bands, H, W = img.shape
+        if num_bands != 126:
+            raise ValueError(
+                f"Expected 126 bands for Sentinel, got {num_bands} for {fid} at {img_path}"
+            )
+        img = img.reshape(7, 2, 9, H, W)
+        img = img.reshape(14, 9, H, W)
 
         # 3) optionally take first half of the time series
         if self.slice_mode == "first_half":

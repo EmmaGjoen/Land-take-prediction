@@ -8,8 +8,7 @@ for both U-Net and FCEF baselines, ensuring identical preprocessing.
 import torch
 import torch.nn.functional as F
 import random
-import numpy as np
-from typing import Tuple, Optional, Sequence
+from typing import Tuple, Sequence
 
 
 def compute_normalization_stats(

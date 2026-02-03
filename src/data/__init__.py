@@ -6,7 +6,7 @@ training segmentation models on HABLOSS satellite imagery.
 """
 
 from src.data.habloss_dataset import HablossSampleDataset
-from src.data.timeseries_dataset import TimeSeriesDataset
+from src.data.sentinel_dataset import SentinelDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
     compute_normalization_stats,
@@ -20,7 +20,7 @@ from src.data.transform import (
 __all__ = [
     # Datasets
     "HablossSampleDataset",
-    "TimeSeriesDataset",
+    "SentinelDataset",
     # Splits
     "get_splits",
     "get_ref_ids_from_directory",
