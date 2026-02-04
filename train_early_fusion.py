@@ -25,6 +25,8 @@ sys.path.append(str(root))
 
 from src.config import SENTINEL_DIR, MASK_DIR
 from src.data.sentinel_dataset import SentinelDataset
+from src.data.alphaearth_dataset import AlphaEarthDataset
+from src.data.wrap_datasets import FusedDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
     compute_normalization_stats,
