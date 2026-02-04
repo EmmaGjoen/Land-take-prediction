@@ -16,9 +16,7 @@ venv/
 .ipynb_checkpoints/
 
 # Data
-data/raw/
-data/interim/
-data/processed/
+data/*
 reports/figures/
 *.tif
 *.zip
