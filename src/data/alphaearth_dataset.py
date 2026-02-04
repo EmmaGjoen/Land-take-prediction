@@ -57,17 +57,13 @@ class AlphaEarthDataset(Dataset):
 
         for fid in self.ids:
             emb_path = find_file_by_prefix(ALPHAEARTH_DIR, fid)
-
             self.emb_paths[fid] = emb_path
 
     def __len__(self):
-        # One sample per chip
         return len(self.ids)
 
     def __getitem__(self, idx):
-        # Direct mapping: each idx corresponds to one 64×64 chip
         fid = self.ids[idx]
-
         emb_path = self.emb_paths[fid]
 
         # 1) read arrays
@@ -75,14 +71,16 @@ class AlphaEarthDataset(Dataset):
             emb = src.read()  # (bands, H, W)
 
         # 2) reshape to (T, C, H, W)
-        # Expected layout: 126 = 7 years * 2 quarters * 9 bands
+        # Expected layout: 448 = 7 years * 64 dim
         num_bands, H, W = emb.shape
-        if num_bands != 126:
+        if num_bands != 448:
             raise ValueError(
-                f"Expected 126 bands for Sentinel, got {num_bands} for {fid} at {emb_path}"
+                f"Expected 448 bands for AlphaEarth, got {num_bands} for {fid} at {emb_path}"
             )
-        emb = emb.reshape(7, 2, 9, H, W)
-        emb = emb.reshape(14, 9, H, W)
+        emb = emb.reshape(7, 64, H, W)
+
+        # temporal allignment with sentinel
+        emb = emb.repeat_interleave(repeates=2, dim=0) # (14, 64, H, W)
 
         # 3) optionally take first half of the time series
         if self.slice_mode == "first_half":
@@ -94,6 +92,7 @@ class AlphaEarthDataset(Dataset):
         
         # 5) Apply transforms (which handle padding/cropping via CenterCropTS)
         if self.transform is not None:
-            emb = self.transform(emb)
+            dummy_mask = torch.zeros((H, W), dtype=torch.long)
+            emb = self.transform(emb, dummy_mask)
 
         return emb
