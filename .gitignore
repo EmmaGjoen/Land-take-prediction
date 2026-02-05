@@ -19,12 +19,17 @@ venv/
 data/*
 reports/figures/
 *.tif
+*.tiff
 *.zip
 *.tar.gz
 *.h5
 *.pt
 *.pth
 *.log
+*.npy
+
+# GeoTessera outputs (in case created in root)
+global_0.1_degree_*/
 
 # Jupyter / notebooks
 notebooks/.ipynb_checkpoints/
