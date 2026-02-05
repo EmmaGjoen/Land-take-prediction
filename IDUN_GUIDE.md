@@ -10,7 +10,7 @@ This guide explains how to run the training scripts on IDUN
 ## Setup on IDUN
 
 ### 1. Clone/Upload Project
-From https://github.com/Ceciliamoller/Land-Take-Prediction-Project-NINA-
+From https://github.com/EmmaGjoen/Land-take-prediction.git
 
 ```bash
 # SSH to IDUN
