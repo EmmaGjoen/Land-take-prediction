@@ -79,17 +79,17 @@ class AlphaEarthDataset(Dataset):
             )
         emb = emb.reshape(7, 64, H, W)
 
+        # 4) to torch tensors
+        emb = torch.from_numpy(emb).float()     # (T, C, H, W)
+
         # temporal allignment with sentinel
-        emb = emb.repeat_interleave(repeates=2, dim=0) # (14, 64, H, W)
+        emb = emb.repeat_interleave(repeats=2, dim=0) # (14, 64, H, W)
 
         # 3) optionally take first half of the time series
         if self.slice_mode == "first_half":
             T = emb.shape[0]
             emb = emb[: T // 2]
 
-        # 4) to torch tensors
-        emb = torch.from_numpy(emb).float()     # (T, C, H, W)
-        
         # 5) Apply transforms (which handle padding/cropping via CenterCropTS)
         if self.transform is not None:
             dummy_mask = torch.zeros((H, W), dtype=torch.long)

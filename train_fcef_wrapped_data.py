@@ -10,6 +10,7 @@ import random
 from pathlib import Path
 
 import numpy as np
+from src.data.wrap_datasets import FusedDataset
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -174,8 +175,8 @@ def main():
     print("Estimating per-channel mean_alpha and std_alpha from training data...")
     mean_alpha, std_alpha = compute_normalization_stats(temp_ds_alpha, num_samples=CONFIG["num_samples_for_stats"])
     print(f"✓ Computed normalization stats: {len(mean_alpha)} channels")
-    print(f"  mean_alpha (first 5): {[f'{m:.4f}' for m in mean_alpha[:5]]}")
-    print(f"  std_alpha (first 5): {[f'{s:.4f}' for s in std_alpha[:5]]}")
+    print(f"  mean_alpha (first 5): {[f'{m:.4f}' for m in mean_alpha[:-1]]}")
+    print(f"  std_alpha (first 5): {[f'{s:.4f}' for s in std_alpha[:-1]]}")
     
     # Create datasets
     print("\n" + "="*80)
@@ -185,48 +186,96 @@ def main():
     # Training transform with spatial augmentation (flips + rotations)
     # Always center-crop first to handle variable input sizes
     if CONFIG["augment_train"]:
-        train_transform = ComposeTS([
+        train_transform_sen = ComposeTS([
             CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
             NormalizeBy(10000.0),
             Normalize(mean_sen, std_sen),
         ])
+        train_transform_alpha = ComposeTS([
+            CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+            RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
+            RandomRotate90TS(),
+            NormalizeBy(10000.0),
+            Normalize(mean_alpha, std_alpha),
+        ])
+
     else:
-        train_transform = ComposeTS([
+        train_transform_sen = ComposeTS([
             CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
             NormalizeBy(10000.0),
             Normalize(mean_sen, std_sen),
         ])
+        train_transform_alpha = ComposeTS([
+            CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+            NormalizeBy(10000.0),
+            Normalize(mean_alpha, std_alpha),
+        ])
     
     # Val/test transforms: no augmentation, only normalization (but still crop)
-    val_transform = ComposeTS([
+    val_transform_sen = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
         NormalizeBy(10000.0),
         Normalize(mean_sen, std_sen),
     ])
+    val_transform_alpha = ComposeTS([
+        CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+        NormalizeBy(10000.0),
+        Normalize(mean_alpha, std_alpha),
+    ])
     
-    test_transform = ComposeTS([
+    test_transform_sen = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
         NormalizeBy(10000.0),
         Normalize(mean_sen, std_sen),
     ])
+    test_transform_alpha = ComposeTS([
+        CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+        NormalizeBy(10000.0),
+        Normalize(mean_alpha, std_alpha),
+    ])
     
-    train_ds = SentinelDataset(
+    # Create Sentinel datasets
+    train_ds_sen = SentinelDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
-        transform=train_transform,
+        transform=train_transform_sen,
     )
-    val_ds = SentinelDataset(
+    val_ds_sen = SentinelDataset(
         val_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
-        transform=val_transform,
+        transform=val_transform_sen,
     )
-    test_ds = SentinelDataset(
+    test_ds_sen = SentinelDataset(
         test_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
-        transform=test_transform,
+        transform=test_transform_sen,
     )
+
+    # Create AlphaEarth datasets
+    train_ds_alpha = AlphaEarthDataset(
+        train_ref_ids,
+        slice_mode=CONFIG["temporal_mode"],
+        transform=train_transform_alpha,
+    )
+    val_ds_alpha = AlphaEarthDataset(
+        val_ref_ids,
+        slice_mode=CONFIG["temporal_mode"],
+        transform=val_transform_alpha,
+    )
+    test_ds_alpha = AlphaEarthDataset(
+        test_ref_ids,
+        slice_mode=CONFIG["temporal_mode"],
+        transform=test_transform_alpha,
+    )
+
+    # Fuse Sentinel and AlphaEarth datasets
+    train_ds = FusedDataset(train_ds_sen, train_ds_alpha)
+    val_ds = FusedDataset(val_ds_sen, val_ds_alpha)
+    test_ds = FusedDataset(test_ds_sen, test_ds_alpha)
+
+
     
     print(f"✓ Datasets created for pre-cropped {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
     print(f"Train chips: {len(train_ds)} (from {len(train_ref_ids)} REFIDs) - with flips + rotations")
