@@ -28,7 +28,8 @@ cd /cluster/home/$USER
 cd /cluster/home/$USER
 
 # Load Python module
-module load Python/3.10.8-GCCcore-12.2.0
+module purge
+module load Python/3.11.3-GCCcore-12.3.0
 
 # Create virtual environment
 python -m venv .venv

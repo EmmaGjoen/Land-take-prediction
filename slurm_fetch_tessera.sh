@@ -16,7 +16,8 @@ echo "Running on host: $(hostname)"
 echo "=========================================="
 
 # Load Python module
-module load Python/3.10.8-GCCcore-12.2.0
+module purge
+module load Python/3.11.3-GCCcore-12.3.0
 
 # Activate virtual environment
 source .venv/bin/activate
