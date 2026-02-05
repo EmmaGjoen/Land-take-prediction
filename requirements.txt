@@ -11,3 +11,4 @@ python-dotenv
 wandb
 monai
 segmentation-models-pytorch
+geotessera
