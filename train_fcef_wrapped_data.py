@@ -25,6 +25,7 @@ sys.path.append(str(root))
 
 from src.config import SENTINEL_DIR, MASK_DIR
 from src.data.sentinel_dataset import SentinelDataset
+from src.data.alphaearth_dataset import AlphaEarthDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
     compute_normalization_stats,
@@ -37,87 +38,8 @@ from src.data.transform import (
     RandomRotate90TS
 )
 from src.models.external.torchrs_fc_cd import FCEF
-
-def upscale_mask(mask, scale: int = 4):
-    """
-    Upscale a 2D numpy mask (H, W) with values 0 or 255
-    to a larger size using nearest-neighbor interpolation.
-    
-    Args:
-        mask: 2D numpy array (H, W)
-        scale: Upscaling factor (default 4)
-    
-    Returns:
-        Upscaled mask (H*scale, W*scale)
-    """
-    t = torch.from_numpy(mask)[None, None].float()  # (1,1,H,W)
-    t_up = F.interpolate(t, scale_factor=scale, mode="nearest")
-    return t_up[0, 0].byte().numpy()
-
-
-def log_masks(model, loader, device, step, name_prefix="val", max_batches=10):
-    """
-    Log ground-truth and predicted segmentation masks to WandB as combined side-by-side images.
-    Iterates over multiple batches and creates a single image per sample with GT on left, prediction on right.
-    Visualizes masks as black (0) and white (255).
-    
-    Args:
-        model: The model to evaluate
-        loader: DataLoader to sample from
-        device: Device for inference
-        step: WandB step (typically epoch number)
-        name_prefix: Prefix for WandB keys (e.g., "val", "test")
-        max_batches: Maximum number of batches to process (default 10)
-    """
-    try:
-        model.eval()
-        combined_images = []
-        
-        with torch.no_grad():
-            loader_iter = iter(loader)
-            for b_idx in range(max_batches):
-                try:
-                    imgs, masks = next(loader_iter)
-                except StopIteration:
-                    print(f"[INFO] log_masks ({name_prefix}): reached end of loader at batch {b_idx}")
-                    break
-                except RuntimeError as e:
-                    print(f"[WARN] log_masks ({name_prefix}) batch {b_idx} failed: {e}")
-                    continue
-                
-                if imgs.shape[0] == 0:
-                    continue
-                
-                B = imgs.shape[0]
-                x = imgs.to(device)
-                logits = model(x)
-                preds = logits.argmax(dim=1).cpu()  # (B, H, W)
-                masks = masks.cpu()
-                
-                # Convert to uint8 and scale to 0/255 for visibility
-                masks_vis = (masks * 255).byte().numpy()  # (B, H, W)
-                preds_vis = (preds * 255).byte().numpy()  # (B, H, W)
-                
-                for i in range(B):
-                    if len(masks_vis[i].shape) != 2 or len(preds_vis[i].shape) != 2:
-                        continue
-                    
-                    # Combine GT (left) and prediction (right) side-by-side
-                    combined = np.concatenate([masks_vis[i], preds_vis[i]], axis=1)  # (64, 128)
-                    # Upscale for better visualization
-                    upscaled = upscale_mask(combined, scale=4)  # (256, 512)
-                    combined_images.append(wandb.Image(upscaled, caption=f"{name_prefix}_GT_left_PRED_right_b{b_idx}_i{i}"))
-        
-        # Log combined GT+prediction images
-        if len(combined_images) > 0:
-            wandb.log({f"{name_prefix}_combined_masks": combined_images}, step=step)
-            print(f"[INFO] Logged {len(combined_images)} combined mask images for {name_prefix}")
-        else:
-            print(f"[WARN] log_masks ({name_prefix}): no valid samples to log")
-    
-    except Exception as e:
-        print(f"[ERROR] log_masks ({name_prefix}) failed: {e}")
-        traceback.print_exc()
+from src.utils.visualization import log_masks
+from src.utils.metrics import compute_confusion_binary, compute_metrics_from_confusion
 
 
 # ============================================================================
@@ -183,45 +105,6 @@ def get_device():
 
 
 # ============================================================================
-# METRICS
-# ============================================================================
-
-def compute_confusion_binary(y_pred, y_true, positive_class=1):
-    """
-    Compute confusion matrix for binary classification.
-    y_pred, y_true: (B, H, W) with 0/1 labels
-    returns TP, FP, TN, FN as scalars
-    """
-    y_pred = (y_pred == positive_class)
-    y_true = (y_true == positive_class)
-
-    tp = (y_pred & y_true).sum().item()
-    fp = (y_pred & ~y_true).sum().item()
-    tn = (~y_pred & ~y_true).sum().item()
-    fn = (~y_pred & y_true).sum().item()
-    return tp, fp, tn, fn
-
-
-def compute_metrics_from_confusion(tp, fp, tn, fn, eps=1e-8):
-    """
-    Compute metrics from confusion matrix values.
-    Returns: dict with accuracy, precision, recall, f1, iou
-    """
-    accuracy = (tp + tn) / (tp + tn + fp + fn + eps)
-    precision = tp / (tp + fp + eps)
-    recall = tp / (tp + fn + eps)
-    f1 = 2 * precision * recall / (precision + recall + eps)
-    iou = tp / (tp + fp + fn + eps)
-    return {
-        "accuracy": accuracy,
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-        "iou": iou,
-    }
-
-
-# ============================================================================
 # MAIN
 # ============================================================================
 
@@ -256,22 +139,43 @@ def main():
     print("\n" + "="*80)
     print("NORMALIZATION")
     print("="*80)
-    temp_train_transform = ComposeTS([
+
+    # SENTINEL
+    temp_transform_sen = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),
         NormalizeBy(10000.0),
     ])
     
-    temp_train_ds = SentinelDataset(
+    temp_ds_sen = SentinelDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
-        transform=temp_train_transform,
+        transform=temp_transform_sen,
     )
     
-    print("Estimating per-channel mean and std from training data...")
-    mean, std = compute_normalization_stats(temp_train_ds, num_samples=CONFIG["num_samples_for_stats"])
-    print(f"✓ Computed normalization stats: {len(mean)} channels")
-    print(f"  Mean (first 5): {[f'{m:.4f}' for m in mean[:5]]}")
-    print(f"  Std (first 5): {[f'{s:.4f}' for s in std[:5]]}")
+    print("Estimating per-channel mean_sen and std_sen from training data...")
+    mean_sen, std_sen = compute_normalization_stats(temp_ds_sen, num_samples=CONFIG["num_samples_for_stats"])
+    print(f"✓ Computed normalization stats: {len(mean_sen)} channels")
+    print(f"  mean_sen (first 5): {[f'{m:.4f}' for m in mean_sen[:5]]}")
+    print(f"  std_sen (first 5): {[f'{s:.4f}' for s in std_sen[:5]]}")
+
+
+    # ALPHAEARTH
+    temp_transform_alpha = ComposeTS([
+        CenterCropTS(CONFIG["chip_size"]),
+        NormalizeBy(10000.0),
+    ])
+    
+    temp_ds_alpha = AlphaEarthDataset(
+        train_ref_ids,
+        slice_mode=CONFIG["temporal_mode"],
+        transform=temp_transform_alpha,
+    )
+    
+    print("Estimating per-channel mean_alpha and std_alpha from training data...")
+    mean_alpha, std_alpha = compute_normalization_stats(temp_ds_alpha, num_samples=CONFIG["num_samples_for_stats"])
+    print(f"✓ Computed normalization stats: {len(mean_alpha)} channels")
+    print(f"  mean_alpha (first 5): {[f'{m:.4f}' for m in mean_alpha[:5]]}")
+    print(f"  std_alpha (first 5): {[f'{s:.4f}' for s in std_alpha[:5]]}")
     
     # Create datasets
     print("\n" + "="*80)
@@ -286,26 +190,26 @@ def main():
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
             NormalizeBy(10000.0),
-            Normalize(mean, std),
+            Normalize(mean_sen, std_sen),
         ])
     else:
         train_transform = ComposeTS([
             CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
             NormalizeBy(10000.0),
-            Normalize(mean, std),
+            Normalize(mean_sen, std_sen),
         ])
     
     # Val/test transforms: no augmentation, only normalization (but still crop)
     val_transform = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
         NormalizeBy(10000.0),
-        Normalize(mean, std),
+        Normalize(mean_sen, std_sen),
     ])
     
     test_transform = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
         NormalizeBy(10000.0),
-        Normalize(mean, std),
+        Normalize(mean_sen, std_sen),
     ])
     
     train_ds = SentinelDataset(
@@ -357,7 +261,7 @@ def main():
         num_workers=CONFIG["num_workers"],
     )
     
-    print(f"✓ Dataloaders created with reproducible shuffling (seed={CONFIG['random_seed']})")
+    print(f"Dataloaders created with reproducible shuffling (seed={CONFIG['random_seed']})")
     
     # Build model
     print("\n" + "="*80)
