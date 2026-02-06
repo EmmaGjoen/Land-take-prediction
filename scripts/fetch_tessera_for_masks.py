@@ -1,9 +1,10 @@
 """
-Fetch GeoTessera embeddings for HABLOSS mask tiles and snap to mask grid. 2024 default year. 
+Fetch GeoTessera embeddings for HABLOSS mask tiles and snap to mask grid.
 
 Usage:
     python scripts/fetch_tessera_for_masks.py
     python scripts/fetch_tessera_for_masks.py --year 2023
+    python scripts/fetch_tessera_for_masks.py --year 2017-2024
     python scripts/fetch_tessera_for_masks.py --masks-dir data/raw/masks --out-dir data/processed/tessera
 """
 from __future__ import annotations
@@ -119,45 +120,70 @@ def fetch_one_mask(mask_path: Path, year: int, out_dir: Path, gt: GeoTessera, sk
         return "skipped"
 
 
+def parse_year_arg(year_str: str) -> list[int]:
+    """Parse year argument. Supports single year (2024) or range (2017-2024)."""
+    if "-" in year_str:
+        start, end = year_str.split("-")
+        return list(range(int(start), int(end) + 1))
+    return [int(year_str)]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch GeoTessera embeddings for HABLOSS masks")
     parser.add_argument("--masks-dir", type=Path, default=Path("data/raw/masks"), help="Directory containing mask files")
     parser.add_argument("--out-dir", type=Path, default=Path("data/processed/tessera"), help="Output directory")
-    parser.add_argument("--year", type=int, default=2024, help="Year for Tessera embeddings")
+    parser.add_argument("--year", type=str, default="2017-2024", help="Year or year range (e.g., 2024 or 2017-2024)")
     parser.add_argument("--force", action="store_true", help="Reprocess existing files")
     args = parser.parse_args()
 
     masks_dir: Path = args.masks_dir
     out_dir: Path = args.out_dir
-    year: int = args.year
+    years: list[int] = parse_year_arg(args.year)
     skip_existing: bool = not args.force
 
     mask_paths = sorted(masks_dir.glob("*_mask.tif"))
     if not mask_paths:
         raise RuntimeError(f"No masks found in {masks_dir.resolve()}")
 
-    logging.info(f"Processing {len(mask_paths)} masks for year {year}...")
+    logging.info(f"Processing {len(mask_paths)} masks for years {years[0]}-{years[-1]}...")
     
     gt = GeoTessera()
     processed: list[str] = []
     existing: list[str] = []
     skipped: list[str] = []
 
-    for mp in mask_paths:
-        result = fetch_one_mask(mp, year=year, out_dir=out_dir, gt=gt, skip_existing=skip_existing)
-        if result == "ok":
-            processed.append(mp.name)
-        elif result == "exists":
-            existing.append(mp.name)
-        else:
-            skipped.append(mp.name)
+    for year in years:
+        logging.info(f"\n{'='*50}")
+        logging.info(f"Processing year {year}")
+        logging.info(f"{'='*50}")
+        
+        year_processed = 0
+        year_existing = 0
+        year_skipped = 0
+        
+        for mp in mask_paths:
+            result = fetch_one_mask(mp, year=year, out_dir=out_dir, gt=gt, skip_existing=skip_existing)
+            if result == "ok":
+                processed.append(f"{mp.name}_{year}")
+                year_processed += 1
+            elif result == "exists":
+                existing.append(f"{mp.name}_{year}")
+                year_existing += 1
+            else:
+                skipped.append(f"{mp.name}_{year}")
+                year_skipped += 1
+        
+        logging.info(f"Year {year}: {year_processed} new, {year_existing} existing, {year_skipped} skipped")
 
     # Summary
-    logging.info("=" * 50)
-    logging.info(f"New:       {len(processed)} masks")
-    logging.info(f"Existing:  {len(existing)} masks (already processed)")
-    logging.info(f"Skipped:   {len(skipped)} masks (no Tessera coverage)")
-    logging.info(f"Total:     {len(processed) + len(existing)}/{len(mask_paths)} masks with embeddings")
+    logging.info(f"\n{'='*50}")
+    logging.info(f"TOTAL SUMMARY")
+    logging.info(f"{'='*50}")
+    logging.info(f"New:       {len(processed)} mask-year combinations")
+    logging.info(f"Existing:  {len(existing)} mask-year combinations (already processed)")
+    logging.info(f"Skipped:   {len(skipped)} mask-year combinations (no Tessera coverage)")
+    total_possible = len(mask_paths) * len(years)
+    logging.info(f"Total:     {len(processed) + len(existing)}/{total_possible} mask-year combinations with embeddings")
     
     # Load previously skipped masks and merge with current skipped
     skipped_file = out_dir / "skipped_masks.txt"

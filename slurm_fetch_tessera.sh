@@ -25,8 +25,8 @@ source .venv/bin/activate
 # Create logs directory if needed
 mkdir -p logs
 
-# Run the script
-python scripts/fetch_tessera_for_masks.py --year 2024
+# Run the script (processes years 2017-2024 by default)
+python scripts/fetch_tessera_for_masks.py
 
 echo "=========================================="
 echo "Job finished: $(date)"
