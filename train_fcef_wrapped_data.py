@@ -1,7 +1,6 @@
 """
 FCEF Early Fusion Training Script for Land-Take Prediction
 
-Based on fc_early_fusion.ipynb
 Fair comparison setup with U-Net baseline: shared splits, normalization, patch size, random seeds
 """
 
@@ -10,7 +9,6 @@ import random
 from pathlib import Path
 
 import numpy as np
-from src.data.wrap_datasets import FusedDataset
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -24,9 +22,10 @@ import traceback
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import SENTINEL_DIR, MASK_DIR
+from src.config import SENTINEL_DIR
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.alphaearth_dataset import AlphaEarthDataset
+from src.data.wrap_datasets import FusedDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
     compute_normalization_stats,
@@ -163,7 +162,6 @@ def main():
     # ALPHAEARTH
     temp_transform_alpha = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),
-        NormalizeBy(10000.0),
     ])
     
     temp_ds_alpha = AlphaEarthDataset(
@@ -175,8 +173,8 @@ def main():
     print("Estimating per-channel mean_alpha and std_alpha from training data...")
     mean_alpha, std_alpha = compute_normalization_stats(temp_ds_alpha, num_samples=CONFIG["num_samples_for_stats"])
     print(f"✓ Computed normalization stats: {len(mean_alpha)} channels")
-    print(f"  mean_alpha (first 5): {[f'{m:.4f}' for m in mean_alpha[:-1]]}")
-    print(f"  std_alpha (first 5): {[f'{s:.4f}' for s in std_alpha[:-1]]}")
+    print(f"  mean_alpha (first 5): {[f'{m:.4f}' for m in mean_alpha[:5]]}")
+    print(f"  std_alpha (first 5): {[f'{s:.4f}' for s in std_alpha[:5]]}")
     
     # Create datasets
     print("\n" + "="*80)
@@ -197,7 +195,6 @@ def main():
             CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
-            NormalizeBy(10000.0),
             Normalize(mean_alpha, std_alpha),
         ])
 
@@ -209,7 +206,6 @@ def main():
         ])
         train_transform_alpha = ComposeTS([
             CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
-            NormalizeBy(10000.0),
             Normalize(mean_alpha, std_alpha),
         ])
     
@@ -221,7 +217,6 @@ def main():
     ])
     val_transform_alpha = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
-        NormalizeBy(10000.0),
         Normalize(mean_alpha, std_alpha),
     ])
     
@@ -232,7 +227,6 @@ def main():
     ])
     test_transform_alpha = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
-        NormalizeBy(10000.0),
         Normalize(mean_alpha, std_alpha),
     ])
     
