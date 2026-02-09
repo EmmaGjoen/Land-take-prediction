@@ -9,7 +9,7 @@ SENTINEL_DIR = DATA_ROOT / "Sentinel"
 MASK_DIR     = DATA_ROOT / "masks"
 VHR_DIR      = DATA_ROOT / "vhr"
 PLANETSCOPE_DIR = DATA_ROOT / "PlanetScope"
-APLHAEARTH_DIR = DATA_ROOT / "AlphaEarth"
+ALPHAEARTH_DIR = DATA_ROOT / "AlphaEarth"
 
 # Output / reports
 REPORTS_DIR = ROOT / "reports"
