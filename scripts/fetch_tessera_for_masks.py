@@ -6,6 +6,8 @@ Usage:
     python scripts/fetch_tessera_for_masks.py --year 2023
     python scripts/fetch_tessera_for_masks.py --year 2017-2024
     python scripts/fetch_tessera_for_masks.py --masks-dir data/raw/masks --out-dir data/processed/tessera
+
+note: Does not currently support multiple tiles per mask. If a mask's bounding box overlaps multiple Tessera tiles, only the first one will be fetched and processed. 
 """
 from __future__ import annotations
 
@@ -35,7 +37,7 @@ def refid_from_mask_path(mask_path: Path) -> str:
 def bbox_from_mask(mask_path: Path) -> tuple[float, float, float, float]:
     with rasterio.open(mask_path) as src:
         b = src.bounds
-    return (b.left, b.bottom, b.right, b.top)  # min_lon, min_lat, max_lon, max_lat (EPSG:4326 for HABLOSS)
+    return (b.left, b.bottom, b.right, b.top)  # min_lon, min_lat, max_lon, max_lat
 
 
 def snap_tessera_to_mask_grid(tessera_tif: Path, mask_path: Path, out_path: Path) -> None:
@@ -128,7 +130,7 @@ def parse_year_arg(year_str: str) -> list[int]:
     return [int(year_str)]
 
 
-def main() -> None:
+def main() -> None: 
     parser = argparse.ArgumentParser(description="Fetch GeoTessera embeddings for HABLOSS masks")
     parser.add_argument("--masks-dir", type=Path, default=Path("data/raw/masks"), help="Directory containing mask files")
     parser.add_argument("--out-dir", type=Path, default=Path("data/processed/tessera"), help="Output directory")
