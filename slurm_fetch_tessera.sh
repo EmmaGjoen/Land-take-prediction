@@ -4,7 +4,7 @@
 #SBATCH --account=share-ie-idi
 #SBATCH --output=logs/fetch_tessera_%j.out
 #SBATCH --error=logs/fetch_tessera_%j.err
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 #SBATCH --partition=CPUQ
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
