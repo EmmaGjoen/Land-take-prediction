@@ -50,7 +50,6 @@ logs/*.out
 logs/*.err
 
 # Helping scripts
-scripts
 scripts/print_alphaearth_embeddings.py
 scripts/alphaearth_embeddings_out
 scripts/alphaearth_embeddings_out/*.txt
