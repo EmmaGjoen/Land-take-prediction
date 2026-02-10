@@ -9,10 +9,16 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import os
+import matplotlib
+
+# Force a non-interactive backend if none is set. This makes the script safe
+# to run on headless clusters (SLURM jobs) where an X display is unavailable.
+if os.environ.get("MPLBACKEND") is None:
+    matplotlib.use(os.environ.get("MPLBACKEND", "Agg"))
 
 import matplotlib.pyplot as plt
 import rasterio
-import numpy as np
 
 
 def verify_alignment(mask_path: Path, tessera_path: Path) -> dict:
@@ -93,10 +99,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Verify Tessera alignment with masks")
     parser.add_argument("--masks-dir", type=Path, default=Path("data/raw/masks"))
     parser.add_argument("--tessera-dir", type=Path, default=Path("data/processed/tessera/snapped_to_mask_grid"))
-    parser.add_argument("--out-dir", type=Path, default=Path("data/processed/tessera/verification"))
+    parser.add_argument("--out-dir", type=Path, default=None,
+                        help="Directory to write verification images. If omitted, uses the SLURM submit dir or current working dir.")
     parser.add_argument("--n", type=int, default=3, help="Number of samples to check")
     parser.add_argument("--year", type=int, default=2024)
     args = parser.parse_args()
+
+    # Determine output directory: prefer explicit arg, then SLURM_SUBMIT_DIR, then repo cwd
+    out_dir = args.out_dir if args.out_dir is not None else Path(os.environ.get("SLURM_SUBMIT_DIR", "."))
 
     mask_paths = sorted(args.masks_dir.glob("*_mask.tif"))[:args.n]
     
@@ -121,11 +131,11 @@ def main() -> None:
         if not all(matches.values()):
             all_match = False
         
-        # Save plot
+        # Save plot to the chosen output directory
         plot_comparison(
-            mask_path, 
-            tessera_path, 
-            save_path=args.out_dir / f"{refid}_verification.png"
+            mask_path,
+            tessera_path,
+            save_path=out_dir / f"{refid}_verification.png",
         )
     
     print("\n" + "=" * 50)

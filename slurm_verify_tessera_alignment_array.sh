@@ -8,13 +8,23 @@
 #SBATCH --partition=GPUQ
 #SBATCH --array=1-100%20   # replace 100 with number of masks; %20 limits concurrent jobs
 
-### Adjust modules/conda env to your site configuration ###
-module load Anaconda3
-source activate tessera
+echo "=========================================="
+echo "Job started: $(date)"
+echo "Running on host: $(hostname)"
+echo "=========================================="
 
-cd /home/youruser/path/to/Land-take-prediction
+module purge
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+cd "$SUBMIT_DIR"
+
 mkdir -p logs
 mkdir -p verification
 
-# SLURM_ARRAY_TASK_ID is 1-based and maps to --index in the wrapper
 python scripts/verify_one_mask_by_index.py --index ${SLURM_ARRAY_TASK_ID} --year 2024
+
+echo "=========================================="
+echo "Job finished: $(date)"
+echo "=========================================="

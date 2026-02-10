@@ -7,15 +7,32 @@
 #SBATCH --mem=4G
 #SBATCH --partition=GPUQ
 
-### Adjust the lines below to match your IDUN environment ###
-module load Anaconda3
-source activate tessera
+echo "=========================================="
+echo "Job started: $(date)"
+echo "Running on host: $(hostname)"
+echo "=========================================="
 
-cd /home/youruser/path/to/Land-take-prediction
+module purge
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+cd "$SUBMIT_DIR"
+
 mkdir -p logs
+mkdir -p "${SUBMIT_DIR}/verification"
+
+OUT_FILE="${SUBMIT_DIR}/COVERAGE_SUMMARY.md"
+
+echo "Working dir: $(pwd)"
+echo "Writing summary to: $OUT_FILE"
 
 python scripts/generate_tessera_summary.py \
   --tessera-dir data/processed/tessera/snapped_to_mask_grid \
   --masks-dir data/raw/masks \
-  --out-file COVERAGE_SUMMARY.md \
+  --out-file "$OUT_FILE" \
   --years 2017-2024
+
+echo "=========================================="
+echo "Job finished: $(date)"
+echo "=========================================="
