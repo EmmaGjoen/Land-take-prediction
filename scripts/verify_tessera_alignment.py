@@ -130,9 +130,9 @@ def main() -> None:
     
     print("\n" + "=" * 50)
     if all_match:
-        print("✓ All checked files are properly aligned!")
+        print("All checked files are properly aligned!")
     else:
-        print("✗ Some files have alignment issues - check the output above")
+        print("Some files have alignment issues. Check the output above")
 
 
 if __name__ == "__main__":
