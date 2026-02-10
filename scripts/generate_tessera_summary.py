@@ -84,6 +84,12 @@ def generate_markdown_summary(data: dict, out_path: Path) -> None:
     
     # Full coverage (all years)
     full_coverage = [m for m, yrs in coverage.items() if set(years).issubset(yrs)]
+
+    # Missing coverage by year
+    missing_by_year: dict[int, list[str]] = {}
+    for year in years:
+        masks_with_year = {m for m, yrs in coverage.items() if year in yrs}
+        missing_by_year[year] = sorted(all_masks - masks_with_year)
     
     report = f"""# GeoTessera Coverage Summary
 
@@ -110,6 +116,19 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         count = coverage_by_year.get(year, 0)
         pct = (count / len(all_masks) * 100) if all_masks else 0
         report += f"| {year} | {count} / {len(all_masks)} | {pct:.1f}% |\n"
+
+    report += """
+## Missing Embeddings by Year
+
+| Year | Missing masks | Percentage |
+|------|---------------|------------|
+"""
+
+    for year in years:
+        missing = missing_by_year.get(year, [])
+        missing_count = len(missing)
+        pct_missing = (missing_count / len(all_masks) * 100) if all_masks else 0
+        report += f"| {year} | {missing_count} / {len(all_masks)} | {pct_missing:.1f}% |\n"
     
     # Detailed coverage table
     report += """
@@ -135,6 +154,17 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
         for mask_id in sorted(masks_without_coverage):
             report += f"- {mask_id}\n"
+
+    # List missing embeddings by year
+    for year in years:
+        missing = missing_by_year.get(year, [])
+        if missing:
+            report += f"""
+## Missing Embeddings for {year} ({len(missing)})
+
+"""
+            for mask_id in missing:
+                report += f"- {mask_id}\n"
     
     # List masks with full coverage
     if full_coverage:
