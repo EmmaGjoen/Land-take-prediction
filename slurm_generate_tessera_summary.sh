@@ -5,7 +5,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --partition=standard
+#SBATCH --partition=GPUQ
 
 ### Adjust the lines below to match your IDUN environment ###
 module load Anaconda3

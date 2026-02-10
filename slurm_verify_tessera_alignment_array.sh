@@ -5,7 +5,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
-#SBATCH --partition=standard
+#SBATCH --partition=GPUQ
 #SBATCH --array=1-100%20   # replace 100 with number of masks; %20 limits concurrent jobs
 
 ### Adjust modules/conda env to your site configuration ###
