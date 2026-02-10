@@ -21,10 +21,23 @@ SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
 cd "$SUBMIT_DIR"
 
 mkdir -p logs
-mkdir -p verification
+mkdir -p data/processed/tessera/verification
 
-python scripts/verify_one_mask_by_index.py --index ${SLURM_ARRAY_TASK_ID} --year 2024
+# Clear stale results CSV on the first array task only
+RESULTS_FILE="data/processed/tessera/verification/results.csv"
+if [ "${SLURM_ARRAY_TASK_ID}" -eq "${SLURM_ARRAY_TASK_MIN}" ]; then
+    rm -f "$RESULTS_FILE"
+    echo "Cleared previous results file"
+fi
+
+python scripts/verify_one_mask_by_index.py \
+    --index ${SLURM_ARRAY_TASK_ID} \
+    --year 2024 \
+    --results-file "$RESULTS_FILE"
 
 echo "=========================================="
 echo "Job finished: $(date)"
 echo "=========================================="
+echo ""
+echo "After all array tasks complete, run:"
+echo "  python scripts/summarize_verification.py"

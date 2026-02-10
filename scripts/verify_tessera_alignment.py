@@ -58,9 +58,19 @@ def verify_alignment(mask_path: Path, tessera_path: Path) -> dict:
     }
 
 
-def plot_comparison(mask_path: Path, tessera_path: Path, save_path: Path | None = None) -> None:
-    """Plot mask and tessera side by side."""
-    result = verify_alignment(mask_path, tessera_path)
+def plot_comparison(
+    mask_path: Path,
+    tessera_path: Path,
+    save_path: Path | None = None,
+    result: dict | None = None,
+) -> None:
+    """Plot mask and tessera side by side.
+
+    If *result* is provided it is reused, otherwise ``verify_alignment`` is
+    called internally.
+    """
+    if result is None:
+        result = verify_alignment(mask_path, tessera_path)
     
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
@@ -136,6 +146,7 @@ def main() -> None:
             mask_path,
             tessera_path,
             save_path=out_dir / f"{refid}_verification.png",
+            result=result,
         )
     
     print("\n" + "=" * 50)
