@@ -61,6 +61,7 @@ CONFIG = {
     
     # Data
     "temporal_mode": "first_half",  # 7 timesteps
+    "img_frequency": "annual",
     "chip_size": 64, 
     
     # Training
@@ -149,6 +150,7 @@ def main():
     temp_ds_sen = SentinelDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=temp_transform_sen,
     )
     
@@ -167,6 +169,7 @@ def main():
     temp_ds_alpha = AlphaEarthDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=temp_transform_alpha,
     )
     
@@ -234,16 +237,19 @@ def main():
     train_ds_sen = SentinelDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=train_transform_sen,
     )
     val_ds_sen = SentinelDataset(
         val_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=val_transform_sen,
     )
     test_ds_sen = SentinelDataset(
         test_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=test_transform_sen,
     )
 
@@ -251,16 +257,19 @@ def main():
     train_ds_alpha = AlphaEarthDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=train_transform_alpha,
     )
     val_ds_alpha = AlphaEarthDataset(
         val_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=val_transform_alpha,
     )
     test_ds_alpha = AlphaEarthDataset(
         test_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=test_transform_alpha,
     )
 
@@ -333,7 +342,7 @@ def main():
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"FCEF_{train_ds.DATASET_NAME}_chip{CONFIG['chip_size']}_t{T}",
+        name=f"FCEF_{train_ds.DATASET_NAME}_{CONFIG['img_frequency']}_chip{CONFIG['chip_size']}_t{T}",
         config={
             "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],

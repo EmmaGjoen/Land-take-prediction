@@ -42,6 +42,7 @@ class AlphaEarthDataset(Dataset):
         ids,
         transform,
         slice_mode: str = None,
+        frequency: str = None
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
@@ -51,6 +52,7 @@ class AlphaEarthDataset(Dataset):
         self.ids = ids
         self.slice_mode = slice_mode
         self.transform = transform
+        self.frequency = frequency
 
         # Pre-resolve image and mask paths once for stability and speed
         self.emb_paths: dict[str, Path] = {}
@@ -83,7 +85,8 @@ class AlphaEarthDataset(Dataset):
         emb = torch.from_numpy(emb).float()     # (T, C, H, W)
 
         # temporal allignment with sentinel
-        emb = emb.repeat_interleave(repeats=2, dim=0) # (14, 64, H, W)
+        if self.frequency != "annual":
+            emb = emb.repeat_interleave(repeats=2, dim=0) # (14, 64, H, W)
 
         # 3) optionally take first half of the time series
         if self.slice_mode == "first_half":

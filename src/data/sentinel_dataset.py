@@ -46,15 +46,18 @@ class SentinelDataset(Dataset):
         ids,
         transform,
         slice_mode: str = None,
+        frequency: str = None
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
         slice_mode: None or "first_half"
         transform: Transform to apply (flips, rotations, normalization)
+        frequency: two quarters a year as default, optional: annual
         """
         self.ids = ids
         self.slice_mode = slice_mode
         self.transform = transform
+        self.frequency = frequency
 
         # Pre-resolve image and mask paths once for stability and speed
         self.img_paths: dict[str, Path] = {}
@@ -78,33 +81,46 @@ class SentinelDataset(Dataset):
         img_path = self.img_paths[fid]
         mask_path = self.mask_paths[fid]
 
-        # 1) read arrays
+        # read arrays
         with rasterio.open(img_path) as src:
             img = src.read()  # (bands, H, W)
         with rasterio.open(mask_path) as src_m:
             mask = src_m.read(1)  # (H, W)
 
-        # 2) reshape to (T, C, H, W)
+        # reshape to (T, C, H, W)
         # Expected layout: 126 = 7 years * 2 quarters * 9 bands
+        C = 9
         num_bands, H, W = img.shape
-        if num_bands != 126:
+        T = num_bands // C
+        num_quarters = 2
+        num_years = T // num_quarters
+        
+        if num_bands != num_years *num_quarters * C:
             raise ValueError(
                 f"Expected 126 bands for Sentinel, got {num_bands} for {fid} at {img_path}"
             )
-        img = img.reshape(7, 2, 9, H, W)
-        img = img.reshape(14, 9, H, W)
+        img = img.reshape(num_years, num_quarters, C, H, W)
 
-        # 3) optionally take first half of the time series
+        if self.frequency == "annual":
+            if T % num_quarters != 0:
+                raise ValueError(
+                    f"Timesteps ({T}) not divisible by steps_per_year ({num_quarters}) for {fid} at {img_path}"
+                )
+            img = img.mean(axis=1)  # aggregate quarters -> (num_years, C, H, W)
+        else:
+            img = img.reshape(T, C, H, W)
+
+        # optionally take first half of the time series
         if self.slice_mode == "first_half":
             T = img.shape[0]
             img = img[: T // 2]
 
-        # 4) to torch tensors
+        # to torch tensors
         img = torch.from_numpy(img).float()     # (T, C, H, W)
         mask = torch.from_numpy(mask).long()    # (H, W)
         mask = (mask > 0).long()
         
-        # 5) Apply transforms (which handle padding/cropping via CenterCropTS)
+        # Apply transforms (which handle padding/cropping via CenterCropTS)
         if self.transform is not None:
             img, mask = self.transform(img, mask)
 
