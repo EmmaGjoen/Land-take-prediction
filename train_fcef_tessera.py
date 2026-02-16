@@ -19,7 +19,7 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import SENTINEL_DIR
+from src.config import SENTINEL_DIR, TESSERA_DIR
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.tessera_dataset import TesseraDataset
 from src.data.wrap_datasets import FusedSentinelTesseraDataset
@@ -75,7 +75,7 @@ CONFIG = {
     "num_workers": 4,
 
     # WandB
-    "wandb_project": "data_variasjon_fcef",
+    "wandb_project": "Baseline",
     "wandb_entity": "nina_prosjektoppgave",
 }
 
@@ -100,6 +100,34 @@ def get_device() -> torch.device:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     return device
+
+
+def filter_ids_by_tessera_availability(
+    ref_ids: list[str],
+    years: list[int],
+    split_name: str = "",
+) -> list[str]:
+    """Keep only ref_ids that have all required Tessera embedding files.
+
+    Logs every skipped tile so the user knows exactly what's missing.
+    """
+    valid, skipped = [], []
+    for fid in ref_ids:
+        missing_years = [
+            y for y in years
+            if not (TESSERA_DIR / f"{fid}_tessera_{y}_snapped.tif").exists()
+        ]
+        if missing_years:
+            skipped.append((fid, missing_years))
+        else:
+            valid.append(fid)
+
+    if skipped:
+        tag = f" [{split_name}]" if split_name else ""
+        print(f"\n⚠ Skipped {len(skipped)} tile(s){tag} — missing Tessera embeddings:")
+        for fid, yrs in skipped:
+            print(f"  • {fid}  (missing years: {yrs})")
+    return valid
 
 
 # ============================================================================
@@ -131,6 +159,19 @@ def main():
     print(f"Val tiles:   {len(val_ref_ids)} (~{100 * len(val_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Test tiles:  {len(test_ref_ids)} (~{100 * len(test_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Using shared splits (random_state={CONFIG['random_seed']})")
+
+    # Filter to tiles that have all required Tessera embeddings
+    tessera_years = CONFIG["tessera_years"]
+    train_ref_ids = filter_ids_by_tessera_availability(train_ref_ids, tessera_years, "train")
+    val_ref_ids   = filter_ids_by_tessera_availability(val_ref_ids,   tessera_years, "val")
+    test_ref_ids  = filter_ids_by_tessera_availability(test_ref_ids,  tessera_years, "test")
+
+    total_after = len(train_ref_ids) + len(val_ref_ids) + len(test_ref_ids)
+    print(f"\nAfter Tessera filtering: {total_after}/{len(all_ref_ids)} tiles remain")
+    print(f"  Train: {len(train_ref_ids)}  Val: {len(val_ref_ids)}  Test: {len(test_ref_ids)}")
+
+    if total_after == 0:
+        raise RuntimeError("No tiles remain after filtering — check TESSERA_DIR and file names.")
 
     # ------------------------------------------------------------------
     # Normalization statistics
@@ -329,6 +370,9 @@ def main():
             "train_chips": len(train_ds),
             "val_chips": len(val_ds),
             "test_chips": len(test_ds),
+            "tiles_total": len(all_ref_ids),
+            "tiles_after_tessera_filter": total_after,
+            "tiles_skipped_tessera": len(all_ref_ids) - total_after,
             "normalization": CONFIG["normalization"],
             "random_seed": CONFIG["random_seed"],
             "train_ratio": CONFIG["train_ratio"],
