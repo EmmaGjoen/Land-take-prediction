@@ -78,7 +78,7 @@ CONFIG = {
     "num_workers": 4,
     
     # WandB
-    "wandb_project": "Baseline",
+    "wandb_project": "data_variasjon_fcef",
     "wandb_entity": "nina_prosjektoppgave",
 }
 
