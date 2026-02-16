@@ -37,7 +37,7 @@ class TesseraDataset(Dataset):
 
     DATASET_NAME = "tessera"
 
-    YEARS_DEFAULT = list(range(2017, 2025))  # 2017-2024
+    YEARS_DEFAULT = list(range(2017, 2024))
     BANDS_PER_YEAR = 128
 
     def __init__(

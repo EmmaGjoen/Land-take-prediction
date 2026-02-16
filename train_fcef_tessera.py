@@ -59,7 +59,7 @@ CONFIG = {
     "temporal_mode": "first_half",  # keep first half of the temporal axis
     "img_frequency": "annual",
     "chip_size": 64,
-    "tessera_years": list(range(2017, 2025)),  # 2017-2024
+    "tessera_years": list(range(2017, 2024)),
 
     # Training
     "epochs": 50,
