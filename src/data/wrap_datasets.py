@@ -35,3 +35,34 @@ class FusedDataset(Dataset):
         # 4. Fuse
         fused_img = torch.cat([sen_img, alpha_img], dim=1)
         return fused_img, mask
+
+
+class FusedSentinelTesseraDataset(Dataset):
+    """Fuse Sentinel imagery with GeoTessera embeddings.
+
+    Identical fusion strategy to ``FusedDataset`` but paired with Tessera
+    embeddings. The two streams are concatenated along the channel axis.
+    """
+
+    DATASET_NAME = "fused_sentinel_tessera"
+
+    def __init__(self, sentinel_ds, tessera_ds):
+        self.sentinel_ds = sentinel_ds
+        self.tessera_ds = tessera_ds
+
+    def __len__(self):
+        return len(self.sentinel_ds)
+
+    def __getitem__(self, idx):
+        sample_seed = idx
+
+        random.seed(sample_seed)
+        torch.manual_seed(sample_seed)
+        sen_img, mask = self.sentinel_ds[idx]
+
+        random.seed(sample_seed)
+        torch.manual_seed(sample_seed)
+        tessera_img, _ = self.tessera_ds[idx]
+
+        fused_img = torch.cat([sen_img, tessera_img], dim=1)
+        return fused_img, mask
