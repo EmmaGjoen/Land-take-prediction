@@ -30,6 +30,8 @@ class TesseraDataset(Dataset):
         transform: ComposeTS-style transform applied to (emb, dummy_mask).
         slice_mode: ``None`` keeps all timesteps; ``"first_half"`` keeps the
             first half (matching the Sentinel first-half convention).
+        frequency: ``None`` repeats yearly embeddings ×2 to match Sentinel's
+            bi-quarterly cadence; ``"annual"`` keeps one timestep per year.
         years: Years to load. Defaults to 2017-2024 (8 years).
     """
 
@@ -43,11 +45,13 @@ class TesseraDataset(Dataset):
         ids: list[str],
         transform,
         slice_mode: Optional[str] = None,
+        frequency: Optional[str] = None,
         years: Optional[list[int]] = None,
     ):
         self.ids = ids
         self.transform = transform
         self.slice_mode = slice_mode
+        self.frequency = frequency
         self.years = years or self.YEARS_DEFAULT
 
         self.emb_paths: dict[str, list[Path]] = {}
@@ -87,7 +91,8 @@ class TesseraDataset(Dataset):
         emb = torch.from_numpy(emb).float()  # (T_years, C, H, W)
 
         # Temporal alignment with Sentinel: 2 quarters per year
-        emb = emb.repeat_interleave(repeats=2, dim=0)  # (T_years*2, C, H, W)
+        if self.frequency != "annual":
+            emb = emb.repeat_interleave(repeats=2, dim=0)  # (T_years*2, C, H, W)
 
         if self.slice_mode == "first_half":
             T = emb.shape[0]
