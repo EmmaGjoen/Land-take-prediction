@@ -16,7 +16,6 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from tqdm import tqdm
 import wandb
-import traceback
 
 # Add project root to path
 root = Path(__file__).resolve().parent
@@ -58,7 +57,8 @@ CONFIG = {
     "num_classes": 2,
     
     # Data
-    "temporal_mode": "first_half",  # 7 timesteps
+    "temporal_mode": 2023, 
+    "img_frequency": None,
     "chip_size": 64, 
     
     # Training
@@ -75,7 +75,7 @@ CONFIG = {
     "num_workers": 4,
     
     # WandB
-    "wandb_project": "Baseline",
+    "wandb_project": "data_variasjon_fcef",
     "wandb_entity": "nina_prosjektoppgave",
 }
 
@@ -145,6 +145,7 @@ def main():
     temp_train_ds = SentinelDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=temp_train_transform,
     )
     
@@ -192,16 +193,25 @@ def main():
     train_ds = SentinelDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=train_transform,
     )
+
+    print(f"DEBUG: Config Year/slice: {CONFIG['temporal_mode']}")
+    print(f"DEBUG: Dataset Slice Mode: {train_ds.slice_mode}")
+    sample_x_checking, _ = train_ds[0]
+    print(f"DEBUG: Single sample shape: {sample_x_checking.shape}")
+
     val_ds = SentinelDataset(
         val_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=val_transform,
     )
     test_ds = SentinelDataset(
         test_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
+        frequency=CONFIG["img_frequency"],
         transform=test_transform,
     )
     
@@ -267,7 +277,7 @@ def main():
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"FCEF_{train_ds.DATASET_NAME}_chip{CONFIG['chip_size']}_t{T}",
+        name=f"FCEF_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}",
         config={
             "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],
