@@ -3,10 +3,10 @@ import numpy as np
 import rasterio
 import torch
 from torch.utils.data import Dataset
-
 from src.config import (
     SENTINEL_DIR,
     MASK_DIR,
+    YEARS
 )
 
 
@@ -46,11 +46,11 @@ class SentinelDataset(Dataset):
         ids,
         transform,
         slice_mode: str = None,
-        frequency: str = None
+        frequency: str | int | None = None
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
-        slice_mode: None or "first_half"
+        slice_mode: None or "first_half", or a specific year (as int): 2019, 2020, 2021, 2022, 2023
         transform: Transform to apply (flips, rotations, normalization)
         frequency: two quarters a year as default, optional: annual
         """
@@ -101,6 +101,10 @@ class SentinelDataset(Dataset):
             )
         img = img.reshape(num_years, num_quarters, C, H, W)
 
+        if self.slice_mode in YEARS:
+            end_idx = YEARS.index(int(self.slice_mode))
+            img = img[0: end_idx +1]
+
         if self.frequency == "annual":
             if T % num_quarters != 0:
                 raise ValueError(
@@ -108,12 +112,13 @@ class SentinelDataset(Dataset):
                 )
             img = img.mean(axis=1)  # aggregate quarters -> (num_years, C, H, W)
         else:
-            img = img.reshape(T, C, H, W)
+            new_T = img.shape[0] * img.shape[1]
+            img = img.reshape(new_T, C, H, W)
 
         # optionally take first half of the time series
         if self.slice_mode == "first_half":
-            T = img.shape[0]
-            img = img[: T // 2]
+            current_T = img.shape[0]
+            img = img[: current_T // 2]
 
         # to torch tensors
         img = torch.from_numpy(img).float()     # (T, C, H, W)
