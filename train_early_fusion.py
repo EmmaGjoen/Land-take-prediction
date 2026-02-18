@@ -258,7 +258,7 @@ def main():
     # Loss, optimizer, and scaler
     criterion = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=CONFIG["learning_rate"])
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler("cuda")
     
     # Initialize WandB
     print("\n" + "="*80)
