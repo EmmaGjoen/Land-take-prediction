@@ -5,6 +5,8 @@ import numpy as np
 
 
 class FusedDataset(Dataset):
+    """Fuse Sentinel imagery with AlphaEarth embeddings. 
+    """
     DATASET_NAME = "fused_sentinel_alpha"
 
     def __init__(self, sentinel_ds, alpha_ds):
