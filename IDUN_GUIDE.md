@@ -78,6 +78,16 @@ sbatch slurm_unet.sh
 sbatch slurm_fcef.sh
 ```
 
+### Submit FCEF + Tessera Training
+```bash
+sbatch slurm_fcef_tessera.sh
+```
+
+### Submit FCEF + AlphaEarth Training
+```bash
+sbatch slurm_fcef_alpha.sh
+```
+
 ### Check Job Status
 ```bash
 # View all your jobs
