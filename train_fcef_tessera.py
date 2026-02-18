@@ -59,7 +59,8 @@ CONFIG = {
     "temporal_mode": "first_half",  # keep first half of the temporal axis
     "img_frequency": "annual",
     "chip_size": 64,
-    "tessera_years": list(range(2017, 2024)),
+    # Sentinel has 126 bands = 7 years × 2 quarters × 9 bands (2018-2024).
+    "tessera_years": list(range(2018, 2025)),  # 2018-2024 inclusive (7 years)
 
     # Training
     "epochs": 50,
@@ -292,6 +293,23 @@ def main():
     print(f"Test chips:  {len(test_ds)} (from {len(test_ref_ids)} REFIDs). no augmentation")
     print(f"Augmentation enabled: {CONFIG['augment_train']}")
 
+    # Temporal alignment sanity check: verify Sentinel and Tessera have same T
+    print("\n--- Temporal alignment check ---")
+    sample_sen, _ = train_ds_sen[0]
+    sample_tess, _ = train_ds_tess[0]
+    T_sen, C_sen = sample_sen.shape[0], sample_sen.shape[1]
+    T_tess, C_tess = sample_tess.shape[0], sample_tess.shape[1]
+    print(f"  Sentinel:  T={T_sen}, C={C_sen}  (shape {tuple(sample_sen.shape)})")
+    print(f"  Tessera:   T={T_tess}, C={C_tess}  (shape {tuple(sample_tess.shape)})")
+    print(f"  Tessera years: {CONFIG['tessera_years']}")
+    if T_sen != T_tess:
+        raise RuntimeError(
+            f"Temporal mismatch! Sentinel has {T_sen} timesteps but Tessera has "
+            f"{T_tess}. Ensure tessera_years covers the same number of years as "
+            f"the Sentinel data ({T_sen} annual steps)."
+        )
+    print(f"  ✓ Temporal axes match: T={T_sen}")
+
     # ------------------------------------------------------------------
     # Dataloaders
     # ------------------------------------------------------------------
@@ -342,7 +360,7 @@ def main():
 
     criterion = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=CONFIG["learning_rate"])
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler("cuda")
 
     # ------------------------------------------------------------------
     # WandB

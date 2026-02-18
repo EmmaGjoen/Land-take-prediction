@@ -293,7 +293,7 @@ def main() -> None:
     parser.add_argument(
         "--years",
         type=str,
-        default="2017-2024",
+        default="2018-2024",
         help="Year range to analyze"
     )
     args = parser.parse_args()

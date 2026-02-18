@@ -32,12 +32,13 @@ class TesseraDataset(Dataset):
             first half (matching the Sentinel first-half convention).
         frequency: ``None`` repeats yearly embeddings ×2 to match Sentinel's
             bi-quarterly cadence; ``"annual"`` keeps one timestep per year.
-        years: Years to load. Defaults to 2017-2024 (8 years).
+        years: Years to load. Defaults to 2018-2024 (7 years) to match Sentinel.
     """
 
     DATASET_NAME = "tessera"
 
-    YEARS_DEFAULT = list(range(2017, 2024))
+    # Sentinel has 126 bands = 7 years × 2 quarters × 9 spectral bands.
+    YEARS_DEFAULT = list(range(2018, 2025))  # 2018-2024 inclusive (7 years)
     BANDS_PER_YEAR = 128
 
     def __init__(
@@ -98,8 +99,8 @@ class TesseraDataset(Dataset):
             T = emb.shape[0]
             emb = emb[: T // 2]
 
+        dummy_mask = torch.zeros((H, W), dtype=torch.long)
         if self.transform is not None:
-            dummy_mask = torch.zeros((H, W), dtype=torch.long)
-            emb = self.transform(emb, dummy_mask)
+            emb, dummy_mask = self.transform(emb, dummy_mask)
 
-        return emb
+        return emb, dummy_mask

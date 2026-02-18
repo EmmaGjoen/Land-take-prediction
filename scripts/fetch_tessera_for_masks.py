@@ -4,7 +4,7 @@ Fetch GeoTessera embeddings for HABLOSS mask tiles and snap to mask grid.
 Usage:
     python scripts/fetch_tessera_for_masks.py
     python scripts/fetch_tessera_for_masks.py --year 2023
-    python scripts/fetch_tessera_for_masks.py --year 2017-2024
+    python scripts/fetch_tessera_for_masks.py --year 2018-2024
     python scripts/fetch_tessera_for_masks.py --masks-dir data/raw/masks --out-dir data/processed/tessera
 
 note: Does not currently support multiple tiles per mask. If a mask's bounding box overlaps multiple Tessera tiles, only the first one will be fetched and processed. 
@@ -123,7 +123,7 @@ def fetch_one_mask(mask_path: Path, year: int, out_dir: Path, gt: GeoTessera, sk
 
 
 def parse_year_arg(year_str: str) -> list[int]:
-    """Parse year argument. Supports single year (2024) or range (2017-2024)."""
+    """Parse year argument. Supports single year (2024) or range (2018-2024)."""
     if "-" in year_str:
         start, end = year_str.split("-")
         return list(range(int(start), int(end) + 1))
@@ -134,7 +134,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch GeoTessera embeddings for HABLOSS masks")
     parser.add_argument("--masks-dir", type=Path, default=Path("data/raw/masks"), help="Directory containing mask files")
     parser.add_argument("--out-dir", type=Path, default=Path("data/processed/tessera"), help="Output directory")
-    parser.add_argument("--year", type=str, default="2017-2024", help="Year or year range (e.g., 2024 or 2017-2024)")
+    parser.add_argument("--year", type=str, default="2018-2024", help="Year or year range (e.g., 2024 or 2018-2024)")
     parser.add_argument("--force", action="store_true", help="Reprocess existing files")
     args = parser.parse_args()
 

@@ -25,7 +25,7 @@ python scripts/eda_tessera.py \
     --tessera-dir data/processed/tessera/snapped_to_mask_grid \
     --masks-dir data/raw/masks \
     --out-dir data/processed/tessera/eda \
-    --years 2017-2024
+    --years 2018-2024
 
 echo "=========================================="
 echo "Job finished: $(date)"

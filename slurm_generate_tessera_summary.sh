@@ -31,7 +31,7 @@ python scripts/generate_tessera_summary.py \
   --tessera-dir data/processed/tessera/snapped_to_mask_grid \
   --masks-dir data/raw/masks \
   --out-file "$OUT_FILE" \
-  --years 2017-2024
+  --years 2018-2024
 
 echo "=========================================="
 echo "Job finished: $(date)"
