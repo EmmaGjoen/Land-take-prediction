@@ -103,6 +103,21 @@ def get_device() -> torch.device:
     return device
 
 
+def _is_valid_tif(path: Path, min_size_bytes: int = 1024) -> bool:
+    """Check that a .tif file exists, is large enough, and can be opened."""
+    if not path.exists():
+        return False
+    if path.stat().st_size < min_size_bytes:
+        return False
+    try:
+        import rasterio
+        with rasterio.open(path) as src:
+            _ = src.count  # quick sanity read
+        return True
+    except Exception:
+        return False
+
+
 def filter_ids_by_tessera_availability(
     ref_ids: list[str],
     years: list[int],
@@ -110,24 +125,39 @@ def filter_ids_by_tessera_availability(
 ) -> list[str]:
     """Keep only ref_ids that have all required Tessera embedding files.
 
-    Logs every skipped tile so the user knows exactly what's missing.
+    Checks that each file exists, has a reasonable size, and is a valid
+    GeoTIFF (can be opened by rasterio). Logs every skipped tile.
     """
-    valid, skipped = [], []
+    valid, skipped_missing, skipped_corrupt = [], [], []
     for fid in ref_ids:
-        missing_years = [
-            y for y in years
-            if not (TESSERA_DIR / f"{fid}_tessera_{y}_snapped.tif").exists()
-        ]
+        missing_years = []
+        corrupt_years = []
+        for y in years:
+            p = TESSERA_DIR / f"{fid}_tessera_{y}_snapped.tif"
+            if not p.exists():
+                missing_years.append(y)
+            elif not _is_valid_tif(p):
+                corrupt_years.append(y)
         if missing_years:
-            skipped.append((fid, missing_years))
+            skipped_missing.append((fid, missing_years))
+        elif corrupt_years:
+            skipped_corrupt.append((fid, corrupt_years))
         else:
             valid.append(fid)
 
-    if skipped:
+    if skipped_missing:
         tag = f" [{split_name}]" if split_name else ""
-        print(f"\n⚠ Skipped {len(skipped)} tile(s){tag} — missing Tessera embeddings:")
-        for fid, yrs in skipped:
+        print(f"\n⚠ Skipped {len(skipped_missing)} tile(s){tag} — missing Tessera embeddings:")
+        for fid, yrs in skipped_missing:
             print(f"  • {fid}  (missing years: {yrs})")
+    if skipped_corrupt:
+        tag = f" [{split_name}]" if split_name else ""
+        print(f"\n⚠ Skipped {len(skipped_corrupt)} tile(s){tag} — CORRUPT Tessera files:")
+        for fid, yrs in skipped_corrupt:
+            paths = [TESSERA_DIR / f"{fid}_tessera_{y}_snapped.tif" for y in yrs]
+            sizes = [p.stat().st_size if p.exists() else 0 for p in paths]
+            print(f"  • {fid}  (corrupt years: {yrs}, sizes: {sizes} bytes)")
+        print("  → Re-run fetch_tessera_for_masks.py with --force to regenerate them.")
     return valid
 
 

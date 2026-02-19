@@ -26,7 +26,8 @@ source .venv/bin/activate
 mkdir -p logs
 
 # Run the script (processes years 2018-2024 by default)
-python scripts/fetch_tessera_for_masks.py
+# Add --force to re-download corrupt/truncated files
+python scripts/fetch_tessera_for_masks.py "$@"
 
 echo "=========================================="
 echo "Job finished: $(date)"
