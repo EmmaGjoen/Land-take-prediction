@@ -50,8 +50,8 @@ echo ""
 
 mkdir -p logs
 
-echo "Starting python train_fcef_wrapped_data.py"
-python train_fcef_wrapped_data.py
+echo "Starting python train_fcef_alphaearth.py"
+python train_fcef_alphaearth.py
 
 echo ""
 echo "=========================================="
