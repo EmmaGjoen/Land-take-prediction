@@ -60,7 +60,7 @@ CONFIG = {
     "num_classes": 2,
     
     # Data
-    "temporal_mode": "first_half",  # 7 timesteps
+    "temporal_mode": "first_half",  # Only first 3 years are used in this mode
     "img_frequency": "annual",
     "chip_size": 64, 
     

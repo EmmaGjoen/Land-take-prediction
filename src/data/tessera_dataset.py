@@ -25,14 +25,23 @@ class TesseraDataset(Dataset):
     The temporal axis is aligned with SentinelDataset by repeating each
     yearly embedding twice (matching 2 quarters per year in Sentinel).
 
+    Tiles that are missing embedding files for any of the requested years
+    are silently excluded (logged to stdout) instead of raising an error.
+    This allows training with partial coverage when only a subset of years
+    is needed.
+
     Args:
         ids: Reference IDs matching the mask filename prefix.
         transform: ComposeTS-style transform applied to (emb, dummy_mask).
         slice_mode: ``None`` keeps all timesteps; ``"first_half"`` keeps the
             first half (matching the Sentinel first-half convention).
+            **Note:** when ``years`` already selects the desired temporal
+            subset, ``slice_mode`` should be ``None`` to avoid double-slicing.
         frequency: ``None`` repeats yearly embeddings ×2 to match Sentinel's
             bi-quarterly cadence; ``"annual"`` keeps one timestep per year.
-        years: Years to load. Defaults to 2018-2024 (7 years) to match Sentinel.
+        years: Years to load. Defaults to ``YEARS`` from ``src.config``
+            (2018-2024). Pass a subset (e.g. ``[2018, 2019, 2020]``) to
+            load only those years.
     """
 
     DATASET_NAME = "tessera"

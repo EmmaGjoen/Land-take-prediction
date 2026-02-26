@@ -87,4 +87,9 @@ python train_fcef_tessera.py
 python train_fcef_wrapped_data.py
 ```
 
+### Temporal slicing
+
+All FCEF training scripts use `temporal_mode = "first_half"` with `frequency = "annual"`,
+which keeps the first 3 out of 7 years of the time series (2018, 2019, 2020).
+
 For running on IDUN, see [IDUN_GUIDE.md](IDUN_GUIDE.md).
