@@ -38,7 +38,7 @@ class TesseraDataset(Dataset):
     DATASET_NAME = "tessera"
 
     # Sentinel has 126 bands = 7 years × 2 quarters × 9 spectral bands.
-    YEARS_DEFAULT = list(range(2018, 2025))  # 2018-2024 inclusive (7 years)
+    from src.config import YEARS as YEARS_DEFAULT
     BANDS_PER_YEAR = 128
 
     def __init__(
@@ -56,16 +56,27 @@ class TesseraDataset(Dataset):
         self.years = years or self.YEARS_DEFAULT
 
         self.emb_paths: dict[str, list[Path]] = {}
+        self.valid_ids = []
+        self.excluded_ids = {}
         for fid in self.ids:
             paths = []
+            missing_years = []
             for year in self.years:
                 p = TESSERA_DIR / f"{fid}_tessera_{year}_snapped.tif"
                 if not p.exists():
-                    raise FileNotFoundError(
-                        f"Missing Tessera file for {fid} year={year}: {p}"
-                    )
-                paths.append(p)
-            self.emb_paths[fid] = paths
+                    missing_years.append(year)
+                else:
+                    paths.append(p)
+            if not missing_years:
+                self.emb_paths[fid] = paths
+                self.valid_ids.append(fid)
+            else:
+                self.excluded_ids[fid] = missing_years
+        if self.excluded_ids:
+            print(f"[TesseraDataset] Excluded {len(self.excluded_ids)} tiles missing required years.")
+            for fid, years in self.excluded_ids.items():
+                print(f"  Excluded {fid}: missing years {years}")
+        self.ids = self.valid_ids
 
     def __len__(self) -> int:
         return len(self.ids)
