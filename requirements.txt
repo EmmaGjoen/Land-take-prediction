@@ -1,6 +1,7 @@
 torch==2.1.0
 torchvision==0.16.0
 torchgeo
+einops
 rasterio
 numpy<2.0
 pandas
@@ -11,3 +12,4 @@ python-dotenv
 wandb
 monai
 segmentation-models-pytorch
+geotessera

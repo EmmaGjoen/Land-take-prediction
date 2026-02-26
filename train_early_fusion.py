@@ -315,7 +315,7 @@ def main():
             mask = mask.to(device)
             
             optimizer.zero_grad()
-            with torch.amp.autocast('cuda'):
+            with torch.cuda.amp.autocast():
                 logits = model(x)
                 loss = criterion(logits, mask)
 
@@ -335,7 +335,7 @@ def main():
             for x, mask in val_loader:
                 x = x.to(device)
                 mask = mask.to(device)
-                with torch.amp.autocast('cuda'):
+                with torch.cuda.amp.autocast():
                     logits = model(x)
                     loss = criterion(logits, mask)
                 val_loss += loss.item()
@@ -387,7 +387,7 @@ def main():
         for x, mask in test_loader:
             x = x.to(device)
             mask = mask.to(device)
-            with torch.amp.autocast('cuda'):
+            with torch.cuda.amp.autocast():
                 logits = model(x)
                 loss = criterion(logits, mask)
             test_loss += loss.item()

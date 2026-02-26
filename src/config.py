@@ -11,6 +11,9 @@ VHR_DIR      = DATA_ROOT / "vhr"
 PLANETSCOPE_DIR = DATA_ROOT / "PlanetScope"
 ALPHAEARTH_DIR = DATA_ROOT / "AlphaEarth"
 
+# Tessera embeddings (snapped to mask grid)
+TESSERA_DIR = ROOT / "data" / "processed" / "tessera" / "snapped_to_mask_grid"
+
 # Output / reports
 REPORTS_DIR = ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"

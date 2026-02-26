@@ -94,8 +94,8 @@ class AlphaEarthDataset(Dataset):
             emb = emb[: T // 2]
 
         # 5) Apply transforms (which handle padding/cropping via CenterCropTS)
+        dummy_mask = torch.zeros((H, W), dtype=torch.long)
         if self.transform is not None:
-            dummy_mask = torch.zeros((H, W), dtype=torch.long)
-            emb = self.transform(emb, dummy_mask)
+            emb, dummy_mask = self.transform(emb, dummy_mask)
 
-        return emb
+        return emb, dummy_mask

@@ -16,17 +16,20 @@ venv/
 .ipynb_checkpoints/
 
 # Data
-data/raw/
-data/interim/
-data/processed/
+data/*
 reports/figures/
 *.tif
+*.tiff
 *.zip
 *.tar.gz
 *.h5
 *.pt
 *.pth
 *.log
+*.npy
+
+# GeoTessera outputs (in case created in root)
+global_0.1_degree_*/
 
 # Jupyter / notebooks
 notebooks/.ipynb_checkpoints/
@@ -47,7 +50,6 @@ logs/*.out
 logs/*.err
 
 # Helping scripts
-scripts
 scripts/print_alphaearth_embeddings.py
 scripts/alphaearth_embeddings_out
 scripts/alphaearth_embeddings_out/*.txt

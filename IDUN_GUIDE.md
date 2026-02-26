@@ -10,7 +10,7 @@ This guide explains how to run the training scripts on IDUN
 ## Setup on IDUN
 
 ### 1. Clone/Upload Project
-From https://github.com/Ceciliamoller/Land-Take-Prediction-Project-NINA-
+From https://github.com/EmmaGjoen/Land-take-prediction.git
 
 ```bash
 # SSH to IDUN
@@ -28,7 +28,8 @@ cd /cluster/home/$USER
 cd /cluster/home/$USER
 
 # Load Python module
-module load Python/3.10.8-GCCcore-12.2.0
+module purge
+module load Python/3.11.3-GCCcore-12.3.0
 
 # Create virtual environment
 python -m venv .venv
@@ -75,6 +76,16 @@ sbatch slurm_unet.sh
 ### Submit FCEF Training
 ```bash
 sbatch slurm_fcef.sh
+```
+
+### Submit FCEF + Tessera Training
+```bash
+sbatch slurm_fcef_tessera.sh
+```
+
+### Submit FCEF + AlphaEarth Training
+```bash
+sbatch slurm_fcef_alpha.sh
 ```
 
 ### Check Job Status
