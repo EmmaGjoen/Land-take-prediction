@@ -59,8 +59,8 @@ CONFIG = {
     "temporal_mode": "first_half",  # keep first half of the temporal axis
     "img_frequency": "annual",
     "chip_size": 64,
-    # Sentinel has 126 bands = 7 years × 2 quarters × 9 bands (2018-2024).
-    "tessera_years": list(range(2018, 2025)),  # 2018-2024 inclusive (7 years)
+    # Only first 3 years are used in 'first_half' mode
+    "tessera_years": [2018, 2019, 2020],
 
     # Training
     "epochs": 50,
@@ -234,9 +234,11 @@ def main():
     temp_transform_tess = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),
     ])
+    # no slice_mode for Tessera. The year list already selects the
+    # temporal subset that matches Sentinel's first-half slice.
     temp_ds_tess = TesseraDataset(
         train_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
+        slice_mode=None,
         frequency=CONFIG["img_frequency"],
         transform=temp_transform_tess,
         years=CONFIG["tessera_years"],
@@ -309,9 +311,10 @@ def main():
     test_ds_sen  = SentinelDataset(test_ref_ids,  slice_mode=CONFIG["temporal_mode"], frequency=CONFIG["img_frequency"], transform=test_transform_sen)
 
     tess_kwargs = dict(years=CONFIG["tessera_years"], frequency=CONFIG["img_frequency"])
-    train_ds_tess = TesseraDataset(train_ref_ids, slice_mode=CONFIG["temporal_mode"], transform=train_transform_tess, **tess_kwargs)
-    val_ds_tess   = TesseraDataset(val_ref_ids,   slice_mode=CONFIG["temporal_mode"], transform=val_transform_tess,   **tess_kwargs)
-    test_ds_tess  = TesseraDataset(test_ref_ids,  slice_mode=CONFIG["temporal_mode"], transform=test_transform_tess,  **tess_kwargs)
+    # No slice_mode for Tessera: year list already defines the temporal range.
+    train_ds_tess = TesseraDataset(train_ref_ids, slice_mode=None, transform=train_transform_tess, **tess_kwargs)
+    val_ds_tess   = TesseraDataset(val_ref_ids,   slice_mode=None, transform=val_transform_tess,   **tess_kwargs)
+    test_ds_tess  = TesseraDataset(test_ref_ids,  slice_mode=None, transform=test_transform_tess,  **tess_kwargs)
 
     train_ds = FusedSentinelTesseraDataset(train_ds_sen, train_ds_tess)
     val_ds   = FusedSentinelTesseraDataset(val_ds_sen,   val_ds_tess)
