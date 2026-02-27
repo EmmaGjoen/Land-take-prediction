@@ -49,7 +49,7 @@ Explore how different input representations (e.g., satellite embeddings, raw ima
 │   └── tessera/                        # Tessera EDA outputs & coverage plots
 ├── train_early_fusion.py               # FCEF with Sentinel only
 ├── train_fcef_tessera.py               # FCEF with Sentinel + GeoTessera
-├── train_fcef_wrapped_data.py          # FCEF with Sentinel + AlphaEarth
+├── train_fcef_alphaearth.py            # FCEF with Sentinel + AlphaEarth
 ├── slurm_*.sh                          # SLURM job scripts for IDUN
 ├── IDUN_GUIDE.md                       # Guide for running on IDUN
 └── requirements.txt
@@ -84,7 +84,7 @@ python train_early_fusion.py
 python train_fcef_tessera.py
 
 # FCEF with Sentinel + AlphaEarth
-python train_fcef_wrapped_data.py
+python train_fcef_alphaearth.py
 ```
 
 ### Temporal slicing
