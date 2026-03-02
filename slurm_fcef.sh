@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=fcef
+#SBATCH --job-name=fcef_sen_quarters
 #SBATCH --account=share-ie-idi
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
