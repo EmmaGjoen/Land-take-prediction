@@ -1,12 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=verify_tessera
+#SBATCH --account=share-ie-idi
 #SBATCH --output=logs/verify_%A_%a.out
 #SBATCH --error=logs/verify_%A_%a.err
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
-#SBATCH --partition=GPUQ
-#SBATCH --array=1-100%20   # replace 100 with number of masks; %20 limits concurrent jobs
+#SBATCH --partition=CPUQ
+#SBATCH --array=1-55%20
 
 echo "=========================================="
 echo "Job started: $(date)"
@@ -32,7 +33,7 @@ fi
 
 python scripts/verify_one_mask_by_index.py \
     --index ${SLURM_ARRAY_TASK_ID} \
-    --year 2024 \
+    --year 2018 \
     --results-file "$RESULTS_FILE"
 
 echo "=========================================="
