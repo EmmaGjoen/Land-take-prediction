@@ -46,7 +46,7 @@ def snap_tessera_to_mask_grid(tessera_tifs: list[Path], mask_path: Path, out_pat
     """Reproject and snap one or more Tessera tile GeoTIFFs to the mask grid.
 
     When multiple tiles are provided they are merged spatially with
-    rasterio.merge before reprojection, so masks that straddle a tile
+    rasterio.merge before reprojection, so masks that cross a tile
     boundary receive a spatially complete embedding.
     """
     with rasterio.open(mask_path) as msrc:
