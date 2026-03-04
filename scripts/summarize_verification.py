@@ -79,6 +79,23 @@ def main() -> None:
             print(f"  {r['refid']}")
         print()
 
+    # Report completeness (valid pixel fraction)
+    ok_rows = [r for r in rows if r["status"] == "OK"]
+    vpf_values = []
+    for r in ok_rows:
+        try:
+            vpf_values.append(float(r["valid_pixel_fraction"]))
+        except (KeyError, ValueError, TypeError):
+            pass
+    if vpf_values:
+        import statistics
+        incomplete = [v for v in vpf_values if v < 0.95]
+        print(f"PIXEL COMPLETENESS (band 1, non-zero fraction):")
+        print(f"  Mean:       {statistics.mean(vpf_values):.1%}")
+        print(f"  Min:        {min(vpf_values):.1%}")
+        print(f"  Incomplete (<95%): {len(incomplete)}")
+        print()
+
     if not failures and not errors:
         print("All verified masks are properly aligned!")
     print("=" * 60)
