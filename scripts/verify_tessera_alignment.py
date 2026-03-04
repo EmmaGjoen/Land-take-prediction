@@ -12,10 +12,10 @@ from pathlib import Path
 import os
 import matplotlib
 
-# Force a non-interactive backend if none is set. This makes the script safe
-# to run on headless clusters (SLURM jobs) where an X display is unavailable.
+# Force non-interactive backend on headless clusters (e.g. SLURM) where no
+# X display is available. Only override if the caller hasn't set one explicitly.
 if os.environ.get("MPLBACKEND") is None:
-    matplotlib.use(os.environ.get("MPLBACKEND", "Agg"))
+    matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import rasterio

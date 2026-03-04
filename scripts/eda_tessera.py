@@ -55,7 +55,7 @@ def analyze_single_file(tif_path: Path) -> dict:
                 "mean": float(np.mean(valid_data)) if len(valid_data) > 0 else None,
                 "std": float(np.std(valid_data)) if len(valid_data) > 0 else None,
                 "nan_count": int(np.isnan(data).sum()),
-                "nodata_percentage": float((data == nodata).sum() / data.size * 100) if nodata else 0,
+                "nodata_percentage": float((data == nodata).sum() / data.size * 100) if nodata is not None else 0,
             }
 
             # Per-band statistics
@@ -93,22 +93,25 @@ def parse_filename(filename: str) -> tuple[str, int | None]:
     return filename, None
 
 
-def generate_coverage_table(file_stats: list[dict], years: list[int]) -> dict:
+def generate_coverage_table(file_stats: list[dict]) -> dict:
     """Generate a coverage table showing which masks have data for which years."""
     coverage = defaultdict(dict)
-    
+
     for stat in file_stats:
         mask_id, year = parse_filename(stat["name"])
         if year:
             coverage[mask_id][year] = True
-    
+
     return dict(coverage)
 
 
 def plot_band_distributions(file_stats: list[dict], out_dir: Path, sample_size: int = 5) -> None:
     """Plot distribution of values across bands for sample files."""
     sample = file_stats[:sample_size]
-    
+    if not sample:
+        logging.warning("No files to plot band distributions for")
+        return
+
     fig, axes = plt.subplots(len(sample), 1, figsize=(12, 3 * len(sample)))
     if len(sample) == 1:
         axes = [axes]
@@ -263,7 +266,7 @@ Masks missing data for some years:
     for mask_id, mask_years in sorted(coverage.items()):
         missing = [y for y in years if y not in mask_years]
         if missing:
-            report += f"| {mask_id[:40]}... | {', '.join(map(str, missing))} |\n"
+            report += f"| {mask_id[:40]}{'...' if len(mask_id) > 40 else ''} | {', '.join(map(str, missing))} |\n"
     
     report_path.write_text(report)
     logging.info(f"Saved markdown report: {report_path}")
@@ -327,7 +330,7 @@ def main() -> None:
         file_stats.append(stats)
     
     # Generate coverage table
-    coverage = generate_coverage_table(file_stats, years)
+    coverage = generate_coverage_table(file_stats)
     logging.info(f"Found {len(coverage)} unique masks with coverage data")
     if error_files:
         logging.warning(f"Skipped {len(error_files)} unreadable files during EDA")

@@ -55,7 +55,7 @@ def scan_coverage(tessera_dir: Path, masks_dir: Path, years: list[int]) -> dict:
         mask_id, year = parse_filename(tif_path.name)
         if mask_id and year:
             # Verify file is not empty
-            if tif_path.stat().st_size > 0:
+            if tif_path.stat().st_size >= 1024:
                 coverage[mask_id].add(year)
     
     return {
