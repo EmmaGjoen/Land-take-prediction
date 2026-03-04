@@ -7,9 +7,9 @@ For each mask, computes:
     (upper bound on what the old fetch logic could supply)
 
 Outputs (all under data/processed/tessera/multi_tile_analysis/):
-  results.csv          – one row per mask with geometry and split label
-  summary.md           – markdown + LaTeX table ready for a research paper
-  figures/tile_distribution.png – tile-count histogram and coverage boxplot
+  results.csv: one row per mask with geometry and split label
+  summary.md: markdown + LaTeX table ready for a research paper
+  figures/tile_distribution.png: tile-count histogram and coverage boxplot
 
 Usage:
     python scripts/analyze_multi_tile_coverage.py
