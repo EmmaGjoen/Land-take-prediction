@@ -1,5 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=eda_tessera
+#SBATCH --account=share-ie-idi
 #SBATCH --output=logs/eda_tessera_%j.out
 #SBATCH --error=logs/eda_tessera_%j.err
 #SBATCH --time=02:00:00
