@@ -24,16 +24,23 @@ cd "$SUBMIT_DIR"
 mkdir -p logs
 mkdir -p data/processed/tessera/verification
 
+# Year to verify: pass as first argument to sbatch, e.g.:
+#   sbatch slurm_verify_tessera_alignment_array.sh 2021
+# Defaults to 2018.
+YEAR="${1:-2018}"
+
+# Results file is year-specific so multiple years can be verified independently
+RESULTS_FILE="data/processed/tessera/verification/results_${YEAR}.csv"
+
 # Clear stale results CSV on the first array task only
-RESULTS_FILE="data/processed/tessera/verification/results.csv"
 if [ "${SLURM_ARRAY_TASK_ID}" -eq "${SLURM_ARRAY_TASK_MIN}" ]; then
     rm -f "$RESULTS_FILE"
-    echo "Cleared previous results file"
+    echo "Cleared previous results file for year ${YEAR}"
 fi
 
 python scripts/verify_one_mask_by_index.py \
     --index ${SLURM_ARRAY_TASK_ID} \
-    --year 2018 \
+    --year ${YEAR} \
     --results-file "$RESULTS_FILE"
 
 echo "=========================================="
@@ -41,4 +48,7 @@ echo "Job finished: $(date)"
 echo "=========================================="
 echo ""
 echo "After all array tasks complete, run:"
-echo "  python scripts/summarize_verification.py"
+echo "  python scripts/summarize_verification.py --results-file data/processed/tessera/verification/results_${YEAR}.csv"
+echo ""
+echo "To verify a different year:"
+echo "  sbatch slurm_verify_tessera_alignment_array.sh 2024"
