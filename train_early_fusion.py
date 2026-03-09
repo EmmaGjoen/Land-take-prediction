@@ -57,7 +57,7 @@ CONFIG = {
     "num_classes": 2,
     
     # Data
-    "temporal_mode": 2023, 
+    "temporal_mode": "first_half", 
     "img_frequency": None,
     "chip_size": 64, 
     

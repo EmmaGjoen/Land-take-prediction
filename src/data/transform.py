@@ -16,58 +16,53 @@ def compute_normalization_stats(
     num_samples: int = 2000,
 ) -> Tuple[list[float], list[float]]:
     """
-    Compute per-channel mean and std from training dataset samples.
-    
-    This function estimates normalization statistics from a random subset of
-    training patches. These statistics should be computed ONCE from the training
-    set and then applied consistently to train/val/test data.
-    
-    Handles variable-sized inputs by computing statistics per-sample and averaging.
-    
-    Args:
-        dataset: PyTorch dataset that returns (image, mask) tuples
-                 Image should already be scaled (e.g., divided by 10000)
-                 Can handle both 3D (C, H, W) and 4D (T, C, H, W) tensors
-        num_samples: Number of random samples to use for estimation
-    
-    Returns:
-        Tuple of (mean_list, std_list) with one value per channel
-    
-    Example:
-        >>> train_ds = SentinelHablossPatchDataset(...)  # with mean=None, std=None
-        >>> mean, std = compute_normalization_stats(train_ds, num_samples=2000)
-        >>> # Now use these mean/std for train_ds, val_ds, and test_ds
+    Compute mathematically exact global per-channel mean and std.
     """
+
     num_samples = min(num_samples, len(dataset))
     indices = random.sample(range(len(dataset)), num_samples)
+
+    first_chip, _ = dataset[indices[0]]
+    if first_chip.dim() == 4:
+        C = first_chip.shape[1]
+    elif first_chip.dim() == 3:
+        C = first_chip.shape[0]
+    else:
+        raise ValueError(f"Expected 3D or 4D tensor, got shape {first_chip.shape}")
     
-    # Accumulate per-channel statistics
-    channel_means = []
-    channel_stds = []
+    # Initialize running sums for the exact global calculation
+    pixel_count = 0
+    channel_sum = torch.zeros(C, dtype=torch.float64)
+    channel_sum_sq = torch.zeros(C, dtype=torch.float64)
     
     for idx in indices:
-        img_patch, _ = dataset[idx]
+        img_tensor, _ = dataset[idx]
         
-        # Handle both 3D (C, H, W) and 4D (T, C, H, W) shapes
-        if img_patch.dim() == 4:  # (T, C, H, W) for time series
-            # Compute mean/std across time and spatial dimensions
-            per_channel_mean = img_patch.mean(dim=[0, 2, 3])  # (C,)
-            per_channel_std = img_patch.std(dim=[0, 2, 3])    # (C,)
-        elif img_patch.dim() == 3:  # (C, H, W) for standard images
-            # Compute mean/std across spatial dimensions
-            per_channel_mean = img_patch.mean(dim=[1, 2])  # (C,)
-            per_channel_std = img_patch.std(dim=[1, 2])    # (C,)
-        else:
-            raise ValueError(f"Expected 3D or 4D tensor, got shape {img_patch.shape}")
-        
-        channel_means.append(per_channel_mean)
-        channel_stds.append(per_channel_std)
+        if img_tensor.dim() == 4:  # (T, C, H, W)
+            # Rearrange to (C, T*H*W) to sum across all pixels per channel
+            reshaped = img_tensor.view(C, -1).double() 
+            pixels_in_tensor = reshaped.shape[1]
+        elif img_tensor.dim() == 3:  # (C, H, W)
+            # Rearrange to (C, H*W)
+            reshaped = img_tensor.view(C, -1).double()
+            pixels_in_tensor = reshaped.shape[1]
+            
+        # Update running totals
+        pixel_count += pixels_in_tensor
+        channel_sum += reshaped.sum(dim=1)
+        channel_sum_sq += (reshaped ** 2).sum(dim=1)
+
+    # Calculate global mean and std using exact formulas
+    global_mean = channel_sum / pixel_count
     
-    # Stack and average across all samples
-    mean = torch.stack(channel_means).mean(dim=0).tolist()
-    std = torch.stack(channel_stds).mean(dim=0).tolist()
+    # Variance = E[X^2] - (E[X])^2
+    global_var = (channel_sum_sq / pixel_count) - (global_mean ** 2)
     
-    return mean, std
+    # Clamp to prevent negative variance due to floating point inaccuracies
+    global_var = torch.clamp(global_var, min=0.0)
+    global_std = torch.sqrt(global_var)
+    
+    return global_mean.float().tolist(), global_std.float().tolist()
 
 
 class Normalize:
@@ -160,13 +155,13 @@ class CenterCropTS:
         return x, mask
     
 class NormalizeBy:
-    """Divide by a constant (Sentinel is TOA×10000)."""
+    """Divide by a constant (Sentinel is TOAx10000)."""
     def __init__(self, denom=10000.0):
         self.denom = denom
     def __call__(self, x, mask):
         x = x / self.denom
         # replace NaNs and infinities with 0 (or some sensible default)
-        x = torch.nan_to_num(x, nan=0.0, posinf=1.0, neginf=0.0)
+        x = torch.nan_to_num(x, nan=0.0, posinf=5.0, neginf=-5.0)
         return x, mask
 
 
@@ -182,7 +177,7 @@ class ComposeTS:
 class RandomFlipTS:
     """Random horizontal and vertical flips for time series data (T, C, H, W).
     Applies the same flip to all timesteps and the mask.
-    Works with 64×64 pre-cropped chips.
+    Works with 64x64 pre-cropped chips.
     """
     def __init__(self, p_horizontal=0.5, p_vertical=0.5):
         self.p_horizontal = p_horizontal
@@ -204,7 +199,7 @@ class RandomFlipTS:
 class RandomRotate90TS:
     """Random 90-degree rotations for time series data (T, C, H, W).
     Applies the same rotation to all timesteps and the mask.
-    Works with 64×64 pre-cropped chips on both CPU and GPU.
+    Works with 64x64 pre-cropped chips on both CPU and GPU.
     """
     def __init__(self):
         pass

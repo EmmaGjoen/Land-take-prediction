@@ -159,25 +159,6 @@ def main():
     print(f"✓ Computed normalization stats: {len(mean_sen)} channels")
     print(f"  mean_sen (first 5): {[f'{m:.4f}' for m in mean_sen[:5]]}")
     print(f"  std_sen (first 5): {[f'{s:.4f}' for s in std_sen[:5]]}")
-
-
-    # ALPHAEARTH
-    temp_transform_alpha = ComposeTS([
-        CenterCropTS(CONFIG["chip_size"]),
-    ])
-    
-    temp_ds_alpha = AlphaEarthDataset(
-        train_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
-        frequency=CONFIG["img_frequency"],
-        transform=temp_transform_alpha,
-    )
-    
-    print("Estimating per-channel mean_alpha and std_alpha from training data...")
-    mean_alpha, std_alpha = compute_normalization_stats(temp_ds_alpha, num_samples=CONFIG["num_samples_for_stats"])
-    print(f"✓ Computed normalization stats: {len(mean_alpha)} channels")
-    print(f"  mean_alpha (first 5): {[f'{m:.4f}' for m in mean_alpha[:5]]}")
-    print(f"  std_alpha (first 5): {[f'{s:.4f}' for s in std_alpha[:5]]}")
     
     # Create datasets
     print("\n" + "="*80)
@@ -198,7 +179,6 @@ def main():
             CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
-            Normalize(mean_alpha, std_alpha),
         ])
 
     else:
@@ -209,7 +189,6 @@ def main():
         ])
         train_transform_alpha = ComposeTS([
             CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
-            Normalize(mean_alpha, std_alpha),
         ])
     
     # Val/test transforms: no augmentation, only normalization (but still crop)
@@ -220,7 +199,6 @@ def main():
     ])
     val_transform_alpha = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
-        Normalize(mean_alpha, std_alpha),
     ])
     
     test_transform_sen = ComposeTS([
@@ -230,7 +208,6 @@ def main():
     ])
     test_transform_alpha = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
-        Normalize(mean_alpha, std_alpha),
     ])
     
     # Create Sentinel datasets
