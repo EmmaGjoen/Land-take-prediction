@@ -152,6 +152,7 @@ def main():
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=temp_transform_sen,
+        max_timesteps=None
     )
     
     print("Estimating per-channel mean_sen and std_sen from training data...")
