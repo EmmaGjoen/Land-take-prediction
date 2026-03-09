@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy as np
 import rasterio
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 from src.config import (
     SENTINEL_DIR,
@@ -46,13 +47,15 @@ class SentinelDataset(Dataset):
         ids,
         transform,
         slice_mode: str = None,
-        frequency: str | int | None = None
+        frequency: str | int | None = None,
+        max_timesteps: int = 20 #(10 years (2016-2025) * 2 quarters = 20)
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
         slice_mode: None or "first_half", or a specific year (as int): 2019, 2020, 2021, 2022, 2023
         transform: Transform to apply (flips, rotations, normalization)
         frequency: two quarters a year as default, optional: annual
+        max_timesteps: The global maximum sequence length to pad all chips to.
         """
         self.ids = ids
         self.slice_mode = slice_mode
@@ -88,7 +91,7 @@ class SentinelDataset(Dataset):
             mask = src_m.read(1)  # (H, W)
 
         # reshape to (T, C, H, W)
-        # Expected layout: 126 = 7 years * 2 quarters * 9 bands
+        # (old data:) Expected layout: 126 = 7 years * 2 quarters * 9 bands
         C = 9
         num_bands, H, W = img.shape
         T = num_bands // C
@@ -97,7 +100,7 @@ class SentinelDataset(Dataset):
         
         if num_bands != num_years *num_quarters * C:
             raise ValueError(
-                f"Expected 126 bands for Sentinel, got {num_bands} for {fid} at {img_path}"
+                f"Expected bands to be divisible by {num_quarters * C}, got {num_bands} for {fid} at {img_path}"
             )
         img = img.reshape(num_years, num_quarters, C, H, W)
 
@@ -128,5 +131,14 @@ class SentinelDataset(Dataset):
         # Apply transforms (which handle padding/cropping via CenterCropTS)
         if self.transform is not None:
             img, mask = self.transform(img, mask)
+
+        # Apply padding after transform(normalization) so the empty timesteps remain exactly 0.0
+        if self.max_timesteps is not None:
+            current_T = img.shape[0]
+            if current_T < self.max_timesteps:
+                pad_len = self.max_timesteps - current_T
+                img = F.pad(img, (0, 0, 0, 0, 0, 0, 0, pad_len))
+            elif current_T > self.max_timesteps:
+                img = img[:self.max_timesteps]
 
         return img, mask
