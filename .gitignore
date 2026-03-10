@@ -18,6 +18,7 @@ venv/
 # Data
 data/*
 reports/figures/
+figures/
 *.tif
 *.tiff
 *.zip
