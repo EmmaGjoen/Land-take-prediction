@@ -127,10 +127,29 @@ class SentinelDataset(Dataset):
         img = torch.from_numpy(img).float()     # (T, C, H, W)
         mask = torch.from_numpy(mask).long()    # (H, W)
         mask = (mask > 0).long()
+
+
+        
         
         # Apply transforms (which handle padding/cropping via CenterCropTS)
         if self.transform is not None:
             img, mask = self.transform(img, mask)
+
+        # # Assuming you can extract the start_year from your filename or metadata
+        # # For example, if fid = "2018_tile_45", start_year = 2018
+        # start_year = int(fid.split("_")[0]) 
+        
+        # # Calculate offset from your absolute earliest year (e.g., 2016)
+        # # 2 quarters per year = multiply by 2
+        # offset = (start_year - 2016) * 2 
+        
+        # # Create a tensor of sequential positions: e.g., [4, 5, 6, 7...] for a 2018 start
+        # positions = torch.arange(offset, offset + current_T, dtype=torch.long)
+
+        positions = torch.tensor([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
+
+
+
 
         # Apply padding after transform(normalization) so the empty timesteps remain exactly 0.0
         if self.max_timesteps is not None:
@@ -138,7 +157,10 @@ class SentinelDataset(Dataset):
             if current_T < self.max_timesteps:
                 pad_len = self.max_timesteps - current_T
                 img = F.pad(img, (0, 0, 0, 0, 0, 0, 0, pad_len))
+                # Pad positions with 0s at the end
+                positions = F.pad(positions, (0, pad_len))
             elif current_T > self.max_timesteps:
                 img = img[:self.max_timesteps]
+                positions = positions[:self.max_timesteps]
 
-        return img, mask
+        return img, mask, positions
