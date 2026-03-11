@@ -1,9 +1,3 @@
-"""
-FCEF Early Fusion Training Script for Land-Take Prediction
-
-Fair comparison setup with U-Net baseline: shared splits, normalization, patch size, random seeds
-"""
-
 import sys
 import random
 from pathlib import Path
@@ -16,7 +10,6 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from tqdm import tqdm
 import wandb
-import traceback
 
 # Add project root to path
 root = Path(__file__).resolve().parent
@@ -24,8 +17,6 @@ sys.path.append(str(root))
 
 from src.config import SENTINEL_DIR
 from src.data.sentinel_dataset import SentinelDataset
-from src.data.alphaearth_dataset import AlphaEarthDataset
-from src.data.wrap_datasets import FusedDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
     compute_normalization_stats,
@@ -37,7 +28,7 @@ from src.data.transform import (
     RandomFlipTS,
     RandomRotate90TS
 )
-from src.models.external.torchrs_fc_cd import FCEF
+from src.models.external.utae import UTAE
 from src.utils.visualization import log_masks
 from src.utils.metrics import compute_confusion_binary, compute_metrics_from_confusion
 
@@ -56,12 +47,12 @@ CONFIG = {
     "test_ratio": 0.15,
     
     # Model
-    "architecture": "FCEF",
+    "architecture": "u-tae",
     "num_classes": 2,
     
     # Data
-    "temporal_mode": "first_half",  # Only first 3 years are used in this mode
-    "img_frequency": "annual",
+    "temporal_mode": "first_half", 
+    "img_frequency": None,
     "chip_size": 64, 
     
     # Training
@@ -78,7 +69,7 @@ CONFIG = {
     "num_workers": 4,
     
     # WandB
-    "wandb_project": "data_variasjon_fcef",
+    "wandb_project": "data_variasjon_utae",
     "wandb_entity": "nina_prosjektoppgave",
 }
 
@@ -140,26 +131,23 @@ def main():
     print("\n" + "="*80)
     print("NORMALIZATION")
     print("="*80)
-
-    # SENTINEL
-    temp_transform_sen = ComposeTS([
+    temp_train_transform = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),
         NormalizeBy(10000.0),
     ])
     
-    temp_ds_sen = SentinelDataset(
+    temp_train_ds = SentinelDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
-        transform=temp_transform_sen,
-        max_timesteps=None
+        transform=temp_train_transform,
     )
     
-    print("Estimating per-channel mean_sen and std_sen from training data...")
-    mean_sen, std_sen = compute_normalization_stats(temp_ds_sen, num_samples=CONFIG["num_samples_for_stats"])
-    print(f"✓ Computed normalization stats: {len(mean_sen)} channels")
-    print(f"  mean_sen (first 5): {[f'{m:.4f}' for m in mean_sen[:5]]}")
-    print(f"  std_sen (first 5): {[f'{s:.4f}' for s in std_sen[:5]]}")
+    print("Estimating per-channel mean and std from training data...")
+    mean, std = compute_normalization_stats(temp_train_ds, num_samples=CONFIG["num_samples_for_stats"])
+    print(f"✓ Computed normalization stats: {len(mean)} channels")
+    print(f"  Mean (first 5): {[f'{m:.4f}' for m in mean[:5]]}")
+    print(f"  Std (first 5): {[f'{s:.4f}' for s in std[:5]]}")
     
     # Create datasets
     print("\n" + "="*80)
@@ -169,94 +157,57 @@ def main():
     # Training transform with spatial augmentation (flips + rotations)
     # Always center-crop first to handle variable input sizes
     if CONFIG["augment_train"]:
-        train_transform_sen = ComposeTS([
+        train_transform = ComposeTS([
             CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
             NormalizeBy(10000.0),
-            Normalize(mean_sen, std_sen),
+            Normalize(mean, std),
         ])
-        train_transform_alpha = ComposeTS([
-            CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
-            RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
-            RandomRotate90TS(),
-        ])
-
     else:
-        train_transform_sen = ComposeTS([
+        train_transform = ComposeTS([
             CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
             NormalizeBy(10000.0),
-            Normalize(mean_sen, std_sen),
-        ])
-        train_transform_alpha = ComposeTS([
-            CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+            Normalize(mean, std),
         ])
     
     # Val/test transforms: no augmentation, only normalization (but still crop)
-    val_transform_sen = ComposeTS([
+    val_transform = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
         NormalizeBy(10000.0),
-        Normalize(mean_sen, std_sen),
-    ])
-    val_transform_alpha = ComposeTS([
-        CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+        Normalize(mean, std),
     ])
     
-    test_transform_sen = ComposeTS([
+    test_transform = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
         NormalizeBy(10000.0),
-        Normalize(mean_sen, std_sen),
-    ])
-    test_transform_alpha = ComposeTS([
-        CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+        Normalize(mean, std),
     ])
     
-    # Create Sentinel datasets
-    train_ds_sen = SentinelDataset(
+    train_ds = SentinelDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
-        transform=train_transform_sen,
+        transform=train_transform,
     )
-    val_ds_sen = SentinelDataset(
+
+    print(f"DEBUG: Config Year/slice: {CONFIG['temporal_mode']}")
+    print(f"DEBUG: Dataset Slice Mode: {train_ds.slice_mode}")
+    sample_x_checking, _, _ = train_ds[0]
+    print(f"DEBUG: Single sample shape: {sample_x_checking.shape}")
+
+    val_ds = SentinelDataset(
         val_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
-        transform=val_transform_sen,
+        transform=val_transform,
     )
-    test_ds_sen = SentinelDataset(
+    test_ds = SentinelDataset(
         test_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
-        transform=test_transform_sen,
+        transform=test_transform,
     )
-
-    # Create AlphaEarth datasets
-    train_ds_alpha = AlphaEarthDataset(
-        train_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
-        frequency=CONFIG["img_frequency"],
-        transform=train_transform_alpha,
-    )
-    val_ds_alpha = AlphaEarthDataset(
-        val_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
-        frequency=CONFIG["img_frequency"],
-        transform=val_transform_alpha,
-    )
-    test_ds_alpha = AlphaEarthDataset(
-        test_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
-        frequency=CONFIG["img_frequency"],
-        transform=test_transform_alpha,
-    )
-
-    # Fuse Sentinel and AlphaEarth datasets
-    train_ds = FusedDataset(train_ds_sen, train_ds_alpha)
-    val_ds = FusedDataset(val_ds_sen, val_ds_alpha)
-    test_ds = FusedDataset(test_ds_sen, test_ds_alpha)
-
-
     
     print(f"✓ Datasets created for pre-cropped {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
     print(f"Train chips: {len(train_ds)} (from {len(train_ref_ids)} REFIDs) - with flips + rotations")
@@ -291,18 +242,22 @@ def main():
         num_workers=CONFIG["num_workers"],
     )
     
-    print(f"Dataloaders created with reproducible shuffling (seed={CONFIG['random_seed']})")
+    print(f"✓ Dataloaders created with reproducible shuffling (seed={CONFIG['random_seed']})")
     
     # Build model
     print("\n" + "="*80)
     print("MODEL")
     print("="*80)
-    sample_x, _ = next(iter(train_loader))
+    sample_x, _, _ = next(iter(train_loader))
     _, T, C, H, W = sample_x.shape
     
-    model = FCEF(channels=C, t=T, num_classes=CONFIG["num_classes"]).to(device)
+    model = UTAE(
+        input_dim=C,
+        out_conv=[32, CONFIG["num_classes"]],
+        pad_value=0.0,             
+    )
     
-    print(f"✓ FCEF model created")
+    print(f"✓ U-TAE model created")
     print(f"  Channels: {C}")
     print(f"  Timesteps: {T}")
     print(f"  Classes: {CONFIG['num_classes']}")
@@ -315,12 +270,28 @@ def main():
     
     # Initialize WandB
     print("\n" + "="*80)
+    model = model.to(device)
+    
+    # --- WARM-UP PASS ---
+    print("Initializing U-TAE dynamic shapes to prevent AMP bug.")
+    model.eval() # Set to eval to avoid affecting BatchNorm
+    with torch.no_grad():
+        # Create a single FP32 dummy batch matching your chip dimensions
+        dummy_x = torch.zeros(1, T, C, H, W, device=device)
+        dummy_pos = torch.zeros(1, T, dtype=torch.long, device=device)
+        
+        # Run it through the model OUTSIDE of the autocast context
+        _ = model(dummy_x, batch_positions=dummy_pos)
+    print("✓ U-TAE shapes initialized safely in FP32")
+    # -----------------------------
+
+
     print("WANDB INITIALIZATION")
     print("="*80)
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"FCEF_{train_ds.DATASET_NAME}_{CONFIG['img_frequency']}_chip{CONFIG['chip_size']}_t{T}",
+        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}",
         config={
             "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],
@@ -353,18 +324,17 @@ def main():
         # Training
         model.train()
         total_loss = 0.0
-        for x, mask in tqdm(train_loader, desc=f"Epoch {epoch+1}/{CONFIG['epochs']}"):
+        for x, mask, positions in tqdm(train_loader, desc=f"Epoch {epoch+1}/{CONFIG['epochs']}"):
             x = x.to(device)
             mask = mask.to(device)
+            positions = positions.to(device)
             
             optimizer.zero_grad()
-            with torch.cuda.amp.autocast():
-                logits = model(x)
-                loss = criterion(logits, mask)
+            logits = model(x, batch_positions=positions)
+            loss = criterion(logits, mask)
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            loss.backward()
+            optimizer.step()
 
             total_loss += loss.item()
 
@@ -375,12 +345,12 @@ def main():
         val_loss = 0.0
         sum_tp = sum_fp = sum_tn = sum_fn = 0
         with torch.no_grad():
-            for x, mask in val_loader:
+            for x, mask, positions in val_loader:
                 x = x.to(device)
                 mask = mask.to(device)
-                with torch.cuda.amp.autocast():
-                    logits = model(x)
-                    loss = criterion(logits, mask)
+                positions = positions.to(device)
+                logits = model(x, batch_positions=positions)
+                loss = criterion(logits, mask)
                 val_loss += loss.item()
 
                 pred = torch.argmax(logits, dim=1)
@@ -427,12 +397,12 @@ def main():
     sum_tp = sum_fp = sum_tn = sum_fn = 0
     
     with torch.no_grad():
-        for x, mask in test_loader:
+        for x, mask, positions in test_loader:
             x = x.to(device)
             mask = mask.to(device)
-            with torch.cuda.amp.autocast():
-                logits = model(x)
-                loss = criterion(logits, mask)
+            positions = positions.to(device)
+            logits = model(x, batch_positions=positions)
+            loss = criterion(logits, mask)
             test_loss += loss.item()
 
             pred = torch.argmax(logits, dim=1)
