@@ -25,7 +25,7 @@ class FusedDataset(Dataset):
         random.seed(sample_seed)
         torch.manual_seed(sample_seed)
         # This will trigger RandomFlipTS/RandomRotate90TS using sample_seed
-        sen_img, mask = self.sentinel_ds[idx]
+        sen_img, mask, _ = self.sentinel_ds[idx]
 
         # 3. Transform AlphaEarth
         random.seed(sample_seed)
@@ -65,7 +65,7 @@ class FusedSentinelTesseraDataset(Dataset):
 
         random.seed(sample_seed)
         torch.manual_seed(sample_seed)
-        sen_img, mask = self.sentinel_ds[idx]
+        sen_img, mask, _ = self.sentinel_ds[idx]
 
         random.seed(sample_seed)
         torch.manual_seed(sample_seed)

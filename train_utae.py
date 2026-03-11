@@ -15,7 +15,7 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import SENTINEL_DIR
+from src.config import SENTINEL_DIR, load_end_years
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
@@ -126,6 +126,11 @@ def main():
     print(f"Val tiles: {len(val_ref_ids)} (~{100*len(val_ref_ids)/len(all_ref_ids):.0f}%)")
     print(f"Test tiles: {len(test_ref_ids)} (~{100*len(test_ref_ids)/len(all_ref_ids):.0f}%)")
     print(f"✓ Using SHARED splits with U-Net baseline (random_state={CONFIG['random_seed']})")
+
+    # Load per-tile endYear metadata. Sentinel tiles after endYear will be zeroed
+    # AFTER normalization so U-TAE's pad_value=0.0 masks them from attention.
+    end_years = load_end_years()
+    print(f"✓ Loaded endYear metadata for {len(end_years)} tiles")
     
     # Compute normalization stats
     print("\n" + "="*80)
@@ -189,6 +194,7 @@ def main():
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=train_transform,
+        end_years=end_years,
     )
 
     print(f"DEBUG: Config Year/slice: {CONFIG['temporal_mode']}")
@@ -201,12 +207,14 @@ def main():
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=val_transform,
+        end_years=end_years,
     )
     test_ds = SentinelDataset(
         test_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=test_transform,
+        end_years=end_years,
     )
     
     print(f"✓ Datasets created for pre-cropped {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
@@ -311,6 +319,8 @@ def main():
             "train_ratio": CONFIG["train_ratio"],
             "val_ratio": CONFIG["val_ratio"],
             "test_ratio": CONFIG["test_ratio"],
+            "end_years_masking": True,
+            "num_tiles_with_end_year": len(end_years),
         },
     )
     print("✓ WandB initialized")

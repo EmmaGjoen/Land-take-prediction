@@ -1,10 +1,10 @@
 #!/bin/bash
 
-#SBATCH --job-name=utae_old_data
+#SBATCH --job-name=utae_new_data
 #SBATCH --account=share-ie-idi
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
@@ -48,7 +48,7 @@ echo "GPU status:"
 nvidia-smi || echo "nvidia-smi not available"
 echo ""
 
-mkdir -p logs
+mkdir -p logs/utae
 
 echo "Starting python train_utae.py"
 python train_utae.py

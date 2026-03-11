@@ -22,20 +22,19 @@ def compute_normalization_stats(
     num_samples = min(num_samples, len(dataset))
     indices = random.sample(range(len(dataset)), num_samples)
 
-    first_sample = dataset[indices[0]]
-    first_chip = first_sample[0]
+    first_chip = dataset[indices[0]][0]
     if first_chip.dim() == 4:
         C = first_chip.shape[1]
     elif first_chip.dim() == 3:
         C = first_chip.shape[0]
     else:
         raise ValueError(f"Expected 3D or 4D tensor, got shape {first_chip.shape}")
-    
+
     # Initialize running sums for the exact global calculation
     pixel_count = 0
     channel_sum = torch.zeros(C, dtype=torch.float64)
     channel_sum_sq = torch.zeros(C, dtype=torch.float64)
-    
+
     for idx in indices:
         img_tensor = dataset[idx][0]
         

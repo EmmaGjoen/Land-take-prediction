@@ -303,7 +303,7 @@ def main():
 
     # Temporal alignment sanity check: verify Sentinel and Tessera have same T
     print("\n--- Temporal alignment check ---")
-    sample_sen, _ = train_ds_sen[0]
+    sample_sen, _, _ = train_ds_sen[0]
     sample_tess, _ = train_ds_tess[0]
     T_sen, C_sen = sample_sen.shape[0], sample_sen.shape[1]
     T_tess, C_tess = sample_tess.shape[0], sample_tess.shape[1]
