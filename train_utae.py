@@ -47,7 +47,7 @@ CONFIG = {
     "test_ratio": 0.15,
     
     # Model
-    "architecture": "l-tae",
+    "architecture": "u-tae",
     "num_classes": 2,
     
     # Data
@@ -193,7 +193,7 @@ def main():
 
     print(f"DEBUG: Config Year/slice: {CONFIG['temporal_mode']}")
     print(f"DEBUG: Dataset Slice Mode: {train_ds.slice_mode}")
-    sample_x_checking, _ = train_ds[0]
+    sample_x_checking, _, _ = train_ds[0]
     print(f"DEBUG: Single sample shape: {sample_x_checking.shape}")
 
     val_ds = SentinelDataset(
@@ -248,7 +248,7 @@ def main():
     print("\n" + "="*80)
     print("MODEL")
     print("="*80)
-    sample_x, _ = next(iter(train_loader))
+    sample_x, _, _ = next(iter(train_loader))
     _, T, C, H, W = sample_x.shape
     
     model = UTAE(
@@ -270,12 +270,28 @@ def main():
     
     # Initialize WandB
     print("\n" + "="*80)
+    model = model.to(device)
+    
+    # --- WARM-UP PASS ---
+    print("Initializing U-TAE dynamic shapes to prevent AMP bug.")
+    model.eval() # Set to eval to avoid affecting BatchNorm
+    with torch.no_grad():
+        # Create a single FP32 dummy batch matching your chip dimensions
+        dummy_x = torch.zeros(1, T, C, H, W, device=device)
+        dummy_pos = torch.zeros(1, T, dtype=torch.long, device=device)
+        
+        # Run it through the model OUTSIDE of the autocast context
+        _ = model(dummy_x, batch_positions=dummy_pos)
+    print("✓ U-TAE shapes initialized safely in FP32")
+    # -----------------------------
+
+
     print("WANDB INITIALIZATION")
     print("="*80)
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"L-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}",
+        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}",
         config={
             "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],
@@ -314,13 +330,11 @@ def main():
             positions = positions.to(device)
             
             optimizer.zero_grad()
-            with torch.cuda.amp.autocast():
-                logits = model(x, batch_positions=positions)
-                loss = criterion(logits, mask)
+            logits = model(x, batch_positions=positions)
+            loss = criterion(logits, mask)
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            loss.backward()
+            optimizer.step()
 
             total_loss += loss.item()
 
@@ -331,12 +345,12 @@ def main():
         val_loss = 0.0
         sum_tp = sum_fp = sum_tn = sum_fn = 0
         with torch.no_grad():
-            for x, mask in val_loader:
+            for x, mask, positions in val_loader:
                 x = x.to(device)
                 mask = mask.to(device)
-                with torch.cuda.amp.autocast():
-                    logits = model(x)
-                    loss = criterion(logits, mask)
+                positions = positions.to(device)
+                logits = model(x, batch_positions=positions)
+                loss = criterion(logits, mask)
                 val_loss += loss.item()
 
                 pred = torch.argmax(logits, dim=1)
@@ -383,12 +397,12 @@ def main():
     sum_tp = sum_fp = sum_tn = sum_fn = 0
     
     with torch.no_grad():
-        for x, mask in test_loader:
+        for x, mask, positions in test_loader:
             x = x.to(device)
             mask = mask.to(device)
-            with torch.cuda.amp.autocast():
-                logits = model(x)
-                loss = criterion(logits, mask)
+            positions = positions.to(device)
+            logits = model(x, batch_positions=positions)
+            loss = criterion(logits, mask)
             test_loss += loss.item()
 
             pred = torch.argmax(logits, dim=1)

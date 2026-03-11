@@ -5,7 +5,6 @@ This module provides datasets, transforms, and split utilities for
 training segmentation models on HABLOSS satellite imagery.
 """
 
-from src.data.habloss_dataset import HablossSampleDataset
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.tessera_dataset import TesseraDataset
 from src.data.wrap_datasets import FusedDataset, FusedSentinelTesseraDataset

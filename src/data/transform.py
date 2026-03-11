@@ -22,7 +22,8 @@ def compute_normalization_stats(
     num_samples = min(num_samples, len(dataset))
     indices = random.sample(range(len(dataset)), num_samples)
 
-    first_chip, _ = dataset[indices[0]]
+    first_sample = dataset[indices[0]]
+    first_chip = first_sample[0]
     if first_chip.dim() == 4:
         C = first_chip.shape[1]
     elif first_chip.dim() == 3:
@@ -36,7 +37,7 @@ def compute_normalization_stats(
     channel_sum_sq = torch.zeros(C, dtype=torch.float64)
     
     for idx in indices:
-        img_tensor, _ = dataset[idx]
+        img_tensor = dataset[idx][0]
         
         if img_tensor.dim() == 4:  # (T, C, H, W)
             # Rearrange to (C, T*H*W) to sum across all pixels per channel
@@ -46,7 +47,7 @@ def compute_normalization_stats(
             # Rearrange to (C, H*W)
             reshaped = img_tensor.view(C, -1).double()
             pixels_in_tensor = reshaped.shape[1]
-            
+        
         # Update running totals
         pixel_count += pixels_in_tensor
         channel_sum += reshaped.sum(dim=1)
