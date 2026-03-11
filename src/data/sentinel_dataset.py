@@ -97,6 +97,13 @@ class SentinelDataset(Dataset):
         with rasterio.open(mask_path) as src_m:
             mask = src_m.read(1)  # (H, W)
 
+        # Warn if Sentinel and mask have different spatial dimensions (data quality check)
+        if img.shape[-2:] != mask.shape:
+            print(
+                f"[WARN] spatial mismatch for {fid}: "
+                f"Sentinel {img.shape[-2:]} vs mask {mask.shape}"
+            )
+
         # reshape to (T, C, H, W)
         # (old data:) Expected layout: 126 = 7 years * 2 quarters * 9 bands
         C = 9

@@ -136,22 +136,22 @@ class CenterCropTS:
     def __call__(self, x, mask):
         T, C, H, W = x.shape
         s = self.size
-        
-        # Pad if smaller than target size
+
+        # --- image ---
         if H < s or W < s:
-            pad_h = max(0, s - H)
-            pad_w = max(0, s - W)
-            x = F.pad(x, (0, pad_w, 0, pad_h), mode="constant", value=0)
-            mask = F.pad(mask, (0, pad_w, 0, pad_h), mode="constant", value=0)
+            x = F.pad(x, (0, max(0, s - W), 0, max(0, s - H)), mode="constant", value=0)
             T, C, H, W = x.shape
-        
-        # Center crop if larger than target size
         if H > s or W > s:
-            top = (H - s) // 2
-            left = (W - s) // 2
-            x = x[:, :, top:top+s, left:left+s]
-            mask = mask[top:top+s, left:left+s]
-        
+            x = x[:, :, (H - s) // 2:(H - s) // 2 + s, (W - s) // 2:(W - s) // 2 + s]
+
+        # --- mask: apply same logic independently so mismatched tile sizes don't silently truncate ---
+        mH, mW = mask.shape
+        if mH < s or mW < s:
+            mask = F.pad(mask, (0, max(0, s - mW), 0, max(0, s - mH)), mode="constant", value=0)
+            mH, mW = mask.shape
+        if mH > s or mW > s:
+            mask = mask[(mH - s) // 2:(mH - s) // 2 + s, (mW - s) // 2:(mW - s) // 2 + s]
+
         return x, mask
     
 class NormalizeBy:
