@@ -22,8 +22,6 @@ def compute_normalization_stats(
     num_samples = min(num_samples, len(dataset))
     indices = random.sample(range(len(dataset)), num_samples)
 
-# Some datasets (e.g., UTAE/SentinelDataset) return additional metadata
-    # like position indices, so we only care about the image tensor for stats.
     first_sample = dataset[indices[0]]
     first_chip = first_sample[0]
     if first_chip.dim() == 4:

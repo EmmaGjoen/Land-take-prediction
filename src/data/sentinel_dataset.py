@@ -91,6 +91,9 @@ class SentinelDataset(Dataset):
         with rasterio.open(mask_path) as src_m:
             mask = src_m.read(1)  # (H, W)
 
+        # Positions of the years included in the image+mask timeseries, relative to the range of maximum possible timesteps
+        positions = torch.arange(4, 18, dtype=torch.long)
+
         # reshape to (T, C, H, W)
         # (old data:) Expected layout: 126 = 7 years * 2 quarters * 9 bands
         C = 9
@@ -119,7 +122,6 @@ class SentinelDataset(Dataset):
             new_T = img.shape[0] * img.shape[1]
             img = img.reshape(new_T, C, H, W)
 
-        positions = torch.arange(4, 18, dtype=torch.long)
         # optionally take first half of the time series
         if self.slice_mode == "first_half":
             current_T = img.shape[0]
@@ -133,17 +135,9 @@ class SentinelDataset(Dataset):
         mask = torch.from_numpy(mask).long()    # (H, W)
         mask = (mask > 0).long()
 
-
-        
-        
         # Apply transforms (which handle padding/cropping via CenterCropTS)
         if self.transform is not None:
             img, mask = self.transform(img, mask)
-
-        # positions = torch.tensor([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
-
-
-
 
         # Apply padding after transform(normalization) so the empty timesteps remain exactly 0.0
         if self.max_timesteps is not None:

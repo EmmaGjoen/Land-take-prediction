@@ -47,7 +47,7 @@ CONFIG = {
     "test_ratio": 0.15,
     
     # Model
-    "architecture": "l-tae",
+    "architecture": "u-tae",
     "num_classes": 2,
     
     # Data
@@ -69,7 +69,7 @@ CONFIG = {
     "num_workers": 4,
     
     # WandB
-    "wandb_project": "data_variasjon_fcef",
+    "wandb_project": "data_variasjon_utae",
     "wandb_entity": "nina_prosjektoppgave",
 }
 
@@ -291,7 +291,7 @@ def main():
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"L-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}",
+        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}",
         config={
             "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],
@@ -330,13 +330,8 @@ def main():
             positions = positions.to(device)
             
             optimizer.zero_grad()
-            # with torch.cuda.amp.autocast():
             logits = model(x, batch_positions=positions)
             loss = criterion(logits, mask)
-
-            # scaler.scale(loss).backward()
-            # scaler.step(optimizer)
-            # scaler.update()
 
             loss.backward()
             optimizer.step()
@@ -354,7 +349,6 @@ def main():
                 x = x.to(device)
                 mask = mask.to(device)
                 positions = positions.to(device)
-                # with torch.cuda.amp.autocast():
                 logits = model(x, batch_positions=positions)
                 loss = criterion(logits, mask)
                 val_loss += loss.item()
@@ -407,7 +401,6 @@ def main():
             x = x.to(device)
             mask = mask.to(device)
             positions = positions.to(device)
-            # with torch.cuda.amp.autocast():
             logits = model(x, batch_positions=positions)
             loss = criterion(logits, mask)
             test_loss += loss.item()
