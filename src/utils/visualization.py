@@ -58,6 +58,8 @@ def log_masks(model, loader, device, step, name_prefix="val", max_batches=10):
 
                 B = imgs.shape[0]
                 x = imgs.to(device)
+                mask = mask.to(device)
+                positions = positions.to(device)
                 logits = model(x, batch_positions=positions)
                 preds = logits.argmax(dim=1).cpu()  # (B, H, W)
                 masks = masks.cpu()
