@@ -330,13 +330,16 @@ def main():
             positions = positions.to(device)
             
             optimizer.zero_grad()
-            with torch.cuda.amp.autocast():
-                logits = model(x, batch_positions=positions)
-                loss = criterion(logits, mask)
+            # with torch.cuda.amp.autocast():
+            logits = model(x, batch_positions=positions)
+            loss = criterion(logits, mask)
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            # scaler.scale(loss).backward()
+            # scaler.step(optimizer)
+            # scaler.update()
+
+            loss.backward()
+            optimizer.step()
 
             total_loss += loss.item()
 
@@ -351,9 +354,9 @@ def main():
                 x = x.to(device)
                 mask = mask.to(device)
                 positions = positions.to(device)
-                with torch.cuda.amp.autocast():
-                    logits = model(x, batch_positions=positions)
-                    loss = criterion(logits, mask)
+                # with torch.cuda.amp.autocast():
+                logits = model(x, batch_positions=positions)
+                loss = criterion(logits, mask)
                 val_loss += loss.item()
 
                 pred = torch.argmax(logits, dim=1)
@@ -404,9 +407,9 @@ def main():
             x = x.to(device)
             mask = mask.to(device)
             positions = positions.to(device)
-            with torch.cuda.amp.autocast():
-                logits = model(x, batch_positions=positions)
-                loss = criterion(logits, mask)
+            # with torch.cuda.amp.autocast():
+            logits = model(x, batch_positions=positions)
+            loss = criterion(logits, mask)
             test_loss += loss.item()
 
             pred = torch.argmax(logits, dim=1)
