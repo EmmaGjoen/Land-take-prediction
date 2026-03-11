@@ -15,7 +15,7 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import SENTINEL_DIR, load_end_years
+from src.config import SENTINEL_DIR, MASK_DIR, load_end_years
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
@@ -112,7 +112,10 @@ def main():
     print("DATA SPLITS")
     print("="*80)
     all_ref_ids = get_ref_ids_from_directory(SENTINEL_DIR)
-    print(f"Total reference IDs found: {len(all_ref_ids)}")
+    print(f"Total reference IDs found in Sentinel dir: {len(all_ref_ids)}")
+    # Keep only tiles that also have a mask — new coarse masks don't cover all old Sentinel tiles
+    all_ref_ids = [fid for fid in all_ref_ids if list(MASK_DIR.glob(f"{fid}*.tif"))]
+    print(f"After filtering to tiles with masks: {len(all_ref_ids)}")
     
     train_ref_ids, val_ref_ids, test_ref_ids = get_splits(
         all_ref_ids,
