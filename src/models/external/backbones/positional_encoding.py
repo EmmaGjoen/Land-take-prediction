@@ -18,7 +18,7 @@ class PositionalEncoder(nn.Module):
             self.denom = self.denom.to(batch_positions.device)
             self.updated_location = True
         sinusoid_table = (
-            batch_positions[:, :, None] / self.denom[None, None, :]
+            batch_positions[:, :, None] / self.denom[None, None, :].to(batch_positions.device) # Added to device to prevent two devices error
         )  # B x T x C
         sinusoid_table[:, :, 0::2] = torch.sin(sinusoid_table[:, :, 0::2])  # dim 2i
         sinusoid_table[:, :, 1::2] = torch.cos(sinusoid_table[:, :, 1::2])  # dim 2i+1

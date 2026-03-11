@@ -61,6 +61,7 @@ class SentinelDataset(Dataset):
         self.slice_mode = slice_mode
         self.transform = transform
         self.frequency = frequency
+        self.max_timesteps = max_timesteps
 
         # Pre-resolve image and mask paths once for stability and speed
         self.img_paths: dict[str, Path] = {}
@@ -118,10 +119,14 @@ class SentinelDataset(Dataset):
             new_T = img.shape[0] * img.shape[1]
             img = img.reshape(new_T, C, H, W)
 
+        positions = torch.arange(4, 18, dtype=torch.long)
         # optionally take first half of the time series
         if self.slice_mode == "first_half":
             current_T = img.shape[0]
-            img = img[: current_T // 2]
+            half_T = current_T // 2
+            img = img[: half_T]
+            positions = positions[:half_T]
+            current_T = half_T
 
         # to torch tensors
         img = torch.from_numpy(img).float()     # (T, C, H, W)
@@ -135,18 +140,7 @@ class SentinelDataset(Dataset):
         if self.transform is not None:
             img, mask = self.transform(img, mask)
 
-        # # Assuming you can extract the start_year from your filename or metadata
-        # # For example, if fid = "2018_tile_45", start_year = 2018
-        # start_year = int(fid.split("_")[0]) 
-        
-        # # Calculate offset from your absolute earliest year (e.g., 2016)
-        # # 2 quarters per year = multiply by 2
-        # offset = (start_year - 2016) * 2 
-        
-        # # Create a tensor of sequential positions: e.g., [4, 5, 6, 7...] for a 2018 start
-        # positions = torch.arange(offset, offset + current_T, dtype=torch.long)
-
-        positions = torch.tensor([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
+        # positions = torch.tensor([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
 
 
 
