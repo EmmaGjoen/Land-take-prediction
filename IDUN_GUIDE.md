@@ -1,113 +1,136 @@
 # Running Training Scripts on IDUN
 
-This guide explains how to run the training scripts on IDUN
+This guide explains how to run the training scripts on the IDUN GPU cluster.
+
+---
 
 ## Prerequisites
 
-1. Access to IDUN cluster
-3. Data files in correct directories (see `src/config.py`)
+- SSH access to `idun.hpc.ntnu.no`
+- Project already cloned to `/cluster/home/$USER/Land-take-prediction/` (see Setup)
+- WandB API key in `.env` file (see Configure WandB)
 
-## Setup on IDUN
+---
 
-### 1. Clone/Upload Project
-From https://github.com/EmmaGjoen/Land-take-prediction.git
+## First-Time Setup on IDUN
+
+### 1. Clone the project
 
 ```bash
-# SSH to IDUN
 ssh username@idun.hpc.ntnu.no
-
-# Navigate to your work directory
 cd /cluster/home/$USER
-
-# Clone or upload project
+git clone https://github.com/EmmaGjoen/Land-take-prediction.git
+cd Land-take-prediction
 ```
 
-### 2. Create Virtual Environment
-```bash
-# Navigate into project
-cd /cluster/home/$USER
+### 2. Create a virtual environment
 
-# Load Python module
+```bash
 module purge
 module load Python/3.11.3-GCCcore-12.3.0
 
-# Create virtual environment
 python -m venv .venv
-
-# Activate it
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
 ### 3. Configure WandB
+
 ```bash
-# Use .env file
 echo "WANDB_API_KEY=your_key_here" > .env
 ```
 
-### 4. Verify Data Paths
-Ensure your data paths in `src/config.py` match your IDUN setup:
-```python
-SENTINEL_DIR = Path("/cluster/home/your_user/data/raw/Sentinel")
-MASK_DIR = Path("/cluster/home/your_user/data/raw/masks")
+### 4. Data paths
+
+`src/config.py` resolves all paths relative to the project root — no edits needed.
+After transferring data (see below), the layout should be:
+
+```
+Land-take-prediction/
+├── data/
+│   └── raw/
+│       ├── Sentinel/
+│       ├── Land_take_masks_coarse/
+│       └── annotations_metadata_final.csv
+└── ...
 ```
 
-## Running Training Jobs
+---
 
-Optional: adjust job name and/or time allocation for the job at the top of slurm script:
+## Transferring Code and Data to IDUN
 
-```python
-#!/bin/bash
+**Code** travels via git. **Data** (gitignored) must be rsynced separately.
 
-#SBATCH --job-name=fcef
-#SBATCH --account=share-ie-idi
-#SBATCH --partition=GPUQ
-#SBATCH --gres=gpu:1
-#SBATCH --time=02:00:00
-```
+Run this script from your local machine to do both in one step:
 
-### Submit U-Net Training
 ```bash
-sbatch slurm_unet.sh
+bash sync_to_idun.sh
 ```
 
-### Submit FCEF Training
+The script:
+1. Pushes your local commits to GitHub
+2. rsyncs `data/raw/Sentinel/`, `data/raw/Land_take_masks_coarse/`, and
+   `data/raw/annotations_metadata_final.csv` to IDUN
+
+After it finishes, SSH to IDUN and pull the code:
+
 ```bash
-sbatch slurm_fcef.sh
+ssh username@idun.hpc.ntnu.no
+cd /cluster/home/$USER/Land-take-prediction
+git pull
 ```
 
-### Submit FCEF + Tessera Training
+---
+
+## Submitting Training Jobs
+
+Optional: adjust `--job-name` and `--time` at the top of any SLURM script before submitting.
+
+### U-TAE
+
+```bash
+sbatch slurm_utae.sh
+```
+
+### FCEF + Tessera embeddings
+
 ```bash
 sbatch slurm_fcef_tessera.sh
 ```
 
-### Submit FCEF + AlphaEarth Training
+### FCEF (Sentinel only)
+
+```bash
+sbatch slurm_fcef.sh
+```
+
+### FCEF + AlphaEarth
+
 ```bash
 sbatch slurm_fcef_alpha.sh
 ```
 
-### Check Job Status
+### U-Net
+
 ```bash
-# View all your jobs
+sbatch slurm_unet.sh
+```
+
+---
+
+## Monitoring Jobs
+
+```bash
+# View all your running jobs
 squeue -u $USER
 
-# View specific job
-squeue -j <job_id>
-
-# Cancel job
+# Cancel a job
 scancel <job_id>
+
+# Follow output log in real-time
+tail -f logs/utae/utae_<job_id>.out
+tail -f logs/fcef/fcef_tessera_<job_id>.out
+
+# View error log
+tail -f logs/utae/utae_<job_id>.err
 ```
-
-### Monitor Training
-```bash
-# View output logs in real-time
-tail -f logs/unet_<job_id>.out
-tail -f logs/fcef_<job_id>.out
-
-# View error logs
-tail -f logs/unet_<job_id>.err
-tail -f logs/fcef_<job_id>.err
-```
-
