@@ -62,6 +62,9 @@ CONFIG = {
     "batch_size": 4,
     "augment_train": True,  # Enable spatial augmentation (flips, rotations)
     
+    # Loss
+    "positive_class_weight": 4.0,  # weight for land take class in CrossEntropyLoss
+
     # Normalization
     "normalization": "scale_10000_plus_standardize",
     "num_samples_for_stats": 2000,
@@ -305,7 +308,8 @@ def main():
     print("\n" + "="*80)
     print("CLASS WEIGHTS")
     print("="*80)
-    class_weights = compute_class_weights(train_ref_ids, MASK_DIR)
+    class_weights = torch.tensor([1.0, CONFIG["positive_class_weight"]], dtype=torch.float32)
+    print(f"  → positive class weight: {CONFIG['positive_class_weight']} (set in CONFIG)")
     criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
     optimizer = Adam(model.parameters(), lr=CONFIG["learning_rate"])
     scaler = torch.cuda.amp.GradScaler()
@@ -356,7 +360,7 @@ def main():
             "end_years_masking": True,
             "num_tiles_with_end_year": len(end_years),
             "loss": "weighted_cross_entropy",
-            "positive_class_weight": class_weights[1].item(),
+            "positive_class_weight": CONFIG["positive_class_weight"],
         },
     )
     print("✓ WandB initialized")
