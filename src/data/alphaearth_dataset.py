@@ -31,8 +31,6 @@ def find_file_by_prefix(base_dir: Path, fid: str) -> Path:
 class AlphaEarthDataset(Dataset):
     DATASET_NAME = "alphaearth"
     """
-    Loads .....
-
     Assumptions:
       - `ids` are REFIDs that match the *prefix* of the filenames in ALPHAEARTH_DIR.
     """
@@ -45,9 +43,9 @@ class AlphaEarthDataset(Dataset):
         frequency: str = None
     ):
         """
-        ids: list of REFIDs (filename stems without the long suffix)
-        slice_mode: None or "first_half"
-        transform: Transform to apply (flips, rotations, normalization)
+        - ids: list of REFIDs (filename stems without the long suffix)
+        - slice_mode: None or "first_half"
+        - transform: Transform to apply (flips, rotations, normalization)
         """
         self.ids = ids
         self.slice_mode = slice_mode

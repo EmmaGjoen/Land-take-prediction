@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=fcef_wo_norm_alpha
+#SBATCH --job-name=fcef_alpha_only
 #SBATCH --account=share-ie-idi
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
@@ -50,8 +50,8 @@ echo ""
 
 mkdir -p logs
 
-echo "Starting python train_fcef_alphaearth.py"
-python train_fcef_alphaearth.py
+echo "Starting python train_fcef_alphaearth_only.py"
+python train_fcef_alphaearth_only.py
 
 echo ""
 echo "=========================================="
