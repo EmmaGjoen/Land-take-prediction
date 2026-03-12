@@ -16,6 +16,7 @@ root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
 from src.config import SENTINEL_DIR, MASK_DIR, load_end_years
+import rasterio
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
@@ -87,6 +88,32 @@ def set_random_seeds(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     print(f"All random seeds set to {seed}")
+
+
+def compute_class_weights(ref_ids: list, mask_dir) -> torch.Tensor:
+    """Compute inverse-frequency class weights from training masks.
+
+    Returns a weight tensor [w_background, w_landtake] where w_landtake =
+    n_background / n_landtake, so the rare positive class gets proportionally
+    more weight in CrossEntropyLoss.
+    """
+    n_bg = 0
+    n_lt = 0
+    for fid in ref_ids:
+        paths = list(mask_dir.glob(f"{fid}*.tif"))
+        if not paths:
+            continue
+        with rasterio.open(paths[0]) as src:
+            mask = src.read(1)
+        n_lt += int((mask > 0).sum())
+        n_bg += int((mask == 0).sum())
+    if n_lt == 0:
+        raise RuntimeError("No positive (land take) pixels found in training masks.")
+    w_lt = n_bg / n_lt
+    print(f"  Background pixels : {n_bg:,}")
+    print(f"  Land take pixels  : {n_lt:,}  ({100*n_lt/(n_bg+n_lt):.1f}% of total)")
+    print(f"  → positive class weight: {w_lt:.1f}")
+    return torch.tensor([1.0, w_lt], dtype=torch.float32)
 
 
 def get_device():
@@ -275,7 +302,11 @@ def main():
     print(f"  Input shape: (B, {T}, {C}, {H}, {W})")
     
     # Loss, optimizer, and scaler
-    criterion = nn.CrossEntropyLoss()
+    print("\n" + "="*80)
+    print("CLASS WEIGHTS")
+    print("="*80)
+    class_weights = compute_class_weights(train_ref_ids, MASK_DIR)
+    criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
     optimizer = Adam(model.parameters(), lr=CONFIG["learning_rate"])
     scaler = torch.cuda.amp.GradScaler()
     
@@ -324,6 +355,8 @@ def main():
             "test_ratio": CONFIG["test_ratio"],
             "end_years_masking": True,
             "num_tiles_with_end_year": len(end_years),
+            "loss": "weighted_cross_entropy",
+            "positive_class_weight": class_weights[1].item(),
         },
     )
     print("✓ WandB initialized")
