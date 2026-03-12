@@ -52,13 +52,15 @@ CONFIG = {
     "num_classes": 2,
     
     # Data
-    "temporal_mode": "first_half", 
+    "temporal_mode": None,          # None = use all 14 timesteps
     "img_frequency": None,
-    "chip_size": 64, 
-    
+    "chip_size": 64,
+
     # Training
-    "epochs": 50,
+    "epochs": 75,                   # more epochs (LR scheduler handles convergence)
     "learning_rate": 1e-3,
+    "lr_patience": 7,               # epochs with no val_loss improvement before LR halves
+    "lr_factor": 0.5,               # multiply LR by this when patience runs out
     "batch_size": 4,
     "augment_train": True,  # Enable spatial augmentation (flips, rotations)
     
@@ -312,6 +314,12 @@ def main():
     print(f"  → positive class weight: {CONFIG['positive_class_weight']} (set in CONFIG)")
     criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
     optimizer = Adam(model.parameters(), lr=CONFIG["learning_rate"])
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=CONFIG["lr_factor"],
+        patience=CONFIG["lr_patience"],
+    )
     scaler = torch.cuda.amp.GradScaler()
     
     # Initialize WandB
@@ -361,6 +369,9 @@ def main():
             "num_tiles_with_end_year": len(end_years),
             "loss": "weighted_cross_entropy",
             "positive_class_weight": CONFIG["positive_class_weight"],
+            "lr_scheduler": "ReduceLROnPlateau",
+            "lr_patience": CONFIG["lr_patience"],
+            "lr_factor": CONFIG["lr_factor"],
         },
     )
     print("✓ WandB initialized")
@@ -413,6 +424,10 @@ def main():
         avg_val_loss = val_loss / len(val_loader)
         val_metrics = compute_metrics_from_confusion(sum_tp, sum_fp, sum_tn, sum_fn)
 
+        # Step LR scheduler — halves LR if val_loss hasn't improved for lr_patience epochs
+        scheduler.step(avg_val_loss)
+        current_lr = optimizer.param_groups[0]["lr"]
+
         # Log to WandB
         run.log({
             "epoch": epoch + 1,
@@ -422,7 +437,8 @@ def main():
             "F1": val_metrics['f1'],
             "Precision": val_metrics['precision'],
             "Recall": val_metrics['recall'],
-            "Accuracy": val_metrics['accuracy']
+            "Accuracy": val_metrics['accuracy'],
+            "learning_rate": current_lr,
         })
 
         # Print epoch summary
