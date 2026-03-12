@@ -1,13 +1,14 @@
 """
 Fetch GeoTessera embeddings for HABLOSS mask tiles and snap to mask grid.
 
+When a mask's bounding box overlaps multiple GeoTessera tiles, all tiles are
+downloaded and merged with rasterio.merge before snapping to the mask grid.
+
 Usage:
     python scripts/fetch_tessera_for_masks.py
     python scripts/fetch_tessera_for_masks.py --year 2023
     python scripts/fetch_tessera_for_masks.py --year 2018-2024
     python scripts/fetch_tessera_for_masks.py --masks-dir data/raw/masks --out-dir data/processed/tessera
-
-note: Does not currently support multiple tiles per mask. If a mask's bounding box overlaps multiple Tessera tiles, only the first one will be fetched and processed. 
 """
 from __future__ import annotations
 
@@ -17,8 +18,12 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
-from rasterio.warp import reproject, Resampling
+from rasterio.crs import CRS
+from rasterio.merge import merge as rio_merge
+from rasterio.warp import reproject, Resampling, transform_bounds
 from geotessera import GeoTessera
+
+_WGS84 = CRS.from_epsg(4326)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,58 +40,82 @@ def refid_from_mask_path(mask_path: Path) -> str:
 
 
 def bbox_from_mask(mask_path: Path) -> tuple[float, float, float, float]:
+    """Return bounding box in WGS84 degrees (min_lon, min_lat, max_lon, max_lat).
+
+    Reprojects from the mask's native CRS if it is not already WGS84, so that
+    GeoTessera's tile registry (which indexes in 0.1° WGS84 tiles) receives
+    correct coordinates regardless of the mask projection.
+    """
     with rasterio.open(mask_path) as src:
         b = src.bounds
-    return (b.left, b.bottom, b.right, b.top)  # min_lon, min_lat, max_lon, max_lat
+        crs = src.crs
+    if crs != _WGS84:
+        left, bottom, right, top = transform_bounds(crs, _WGS84, b.left, b.bottom, b.right, b.top)
+    else:
+        left, bottom, right, top = b.left, b.bottom, b.right, b.top
+    return (left, bottom, right, top)
 
 
-def snap_tessera_to_mask_grid(tessera_tif: Path, mask_path: Path, out_path: Path) -> None:
+def snap_tessera_to_mask_grid(tessera_tifs: list[Path], mask_path: Path, out_path: Path) -> None:
+    """Reproject and snap one or more Tessera tile GeoTIFFs to the mask grid.
+
+    When multiple tiles are provided they are merged spatially with
+    rasterio.merge before reprojection, so masks that cross a tile
+    boundary receive a spatially complete embedding.
+    """
     with rasterio.open(mask_path) as msrc:
         dst_crs = msrc.crs
         dst_transform = msrc.transform
         dst_height = msrc.height
         dst_width = msrc.width
 
-    with rasterio.open(tessera_tif) as tsrc:
-        src_crs = tsrc.crs
-        src_transform = tsrc.transform
-        src_count = tsrc.count
-        src_dtype = tsrc.dtypes[0]
+    datasets = [rasterio.open(p) for p in tessera_tifs]
+    try:
+        if len(datasets) == 1:
+            src_data = datasets[0].read()
+            src_transform = datasets[0].transform
+            src_crs = datasets[0].crs
+            profile = datasets[0].profile.copy()
+        else:
+            src_data, src_transform = rio_merge(datasets)
+            src_crs = datasets[0].crs
+            profile = datasets[0].profile.copy()
+    finally:
+        for ds in datasets:
+            ds.close()
 
-        profile = tsrc.profile.copy()
-        profile.update(
-            driver="GTiff",
-            crs=dst_crs,
-            transform=dst_transform,
-            height=dst_height,
-            width=dst_width,
-            count=src_count,
-            dtype=src_dtype,
-            compress="lzw",
-        )
+    src_count = src_data.shape[0]
+    profile.update(
+        driver="GTiff",
+        crs=dst_crs,
+        transform=dst_transform,
+        height=dst_height,
+        width=dst_width,
+        count=src_count,
+        dtype=src_data.dtype.name,
+        compress="lzw",
+    )
 
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        with rasterio.open(out_path, "w", **profile) as dst:
-            for band in range(1, src_count + 1):
-                src_data = tsrc.read(band)
-                dst_data = np.zeros((dst_height, dst_width), dtype=src_data.dtype)
-
-                reproject(
-                    source=src_data,
-                    destination=dst_data,
-                    src_transform=src_transform,
-                    src_crs=src_crs,
-                    dst_transform=dst_transform,
-                    dst_crs=dst_crs,
-                    resampling=Resampling.nearest,
-                )
-                dst.write(dst_data, band)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(out_path, "w", **profile) as dst:
+        for band_idx in range(src_count):
+            dst_data = np.zeros((dst_height, dst_width), dtype=src_data.dtype)
+            reproject(
+                source=src_data[band_idx],
+                destination=dst_data,
+                src_transform=src_transform,
+                src_crs=src_crs,
+                dst_transform=dst_transform,
+                dst_crs=dst_crs,
+                resampling=Resampling.nearest,
+            )
+            dst.write(dst_data, band_idx + 1)
 
 
 def fetch_one_mask(mask_path: Path, year: int, out_dir: Path, gt: GeoTessera, skip_existing: bool = True) -> str:
     """Fetch Tessera embeddings for a single mask and snap to its grid.
-    
-    Returns: 'exists', 'ok', or 'skipped'
+
+    Returns: 'exists', 'ok', 'skipped' (no Tessera coverage), or 'error' (exception).
     """
     refid = refid_from_mask_path(mask_path)
     snapped_path = out_dir / "snapped_to_mask_grid" / f"{refid}_tessera_{year}_snapped.tif"
@@ -111,15 +140,17 @@ def fetch_one_mask(mask_path: Path, year: int, out_dir: Path, gt: GeoTessera, sk
             logging.warning(f"[SKIP] Export failed for {refid}")
             return "skipped"
 
-        raw_tif = Path(files[0])
-        snap_tessera_to_mask_grid(raw_tif, mask_path, snapped_path)
+        raw_tifs = [Path(f) for f in files]
+        if len(raw_tifs) > 1:
+            logging.info(f"[MERGE] {refid} year={year}: merging {len(raw_tifs)} tiles")
+        snap_tessera_to_mask_grid(raw_tifs, mask_path, snapped_path)
 
         logging.info(f"[OK] {refid} -> {snapped_path}")
         return "ok"
     
     except Exception as e:
         logging.error(f"[ERROR] {refid}: {e}")
-        return "skipped"
+        return "error"
 
 
 def parse_year_arg(year_str: str) -> list[int]:
@@ -153,16 +184,18 @@ def main() -> None:
     processed: list[str] = []
     existing: list[str] = []
     skipped: list[str] = []
+    errored: list[str] = []
 
     for year in years:
         logging.info(f"\n{'='*50}")
         logging.info(f"Processing year {year}")
         logging.info(f"{'='*50}")
-        
+
         year_processed = 0
         year_existing = 0
         year_skipped = 0
-        
+        year_errored = 0
+
         for mp in mask_paths:
             result = fetch_one_mask(mp, year=year, out_dir=out_dir, gt=gt, skip_existing=skip_existing)
             if result == "ok":
@@ -171,11 +204,17 @@ def main() -> None:
             elif result == "exists":
                 existing.append(f"{mp.name}_{year}")
                 year_existing += 1
-            else:
+            elif result == "skipped":
                 skipped.append(f"{mp.name}_{year}")
                 year_skipped += 1
-        
-        logging.info(f"Year {year}: {year_processed} new, {year_existing} existing, {year_skipped} skipped")
+            else:  # "error"
+                errored.append(f"{mp.name}_{year}")
+                year_errored += 1
+
+        logging.info(
+            f"Year {year}: {year_processed} new, {year_existing} existing, "
+            f"{year_skipped} skipped, {year_errored} errors"
+        )
 
     # Summary
     logging.info(f"\n{'='*50}")
@@ -184,21 +223,20 @@ def main() -> None:
     logging.info(f"New:       {len(processed)} mask-year combinations")
     logging.info(f"Existing:  {len(existing)} mask-year combinations (already processed)")
     logging.info(f"Skipped:   {len(skipped)} mask-year combinations (no Tessera coverage)")
+    logging.info(f"Errors:    {len(errored)} mask-year combinations (exception during fetch/snap)")
     total_possible = len(mask_paths) * len(years)
     logging.info(f"Total:     {len(processed) + len(existing)}/{total_possible} mask-year combinations with embeddings")
-    
-    # Load previously skipped masks and merge with current skipped
+
+    # Write current run's skipped masks (no Tessera coverage). This reflects only the
+    # current run — re-fetching a previously skipped mask will remove it from the file.
     skipped_file = out_dir / "skipped_masks.txt"
-    all_skipped = set(skipped)
-    if skipped_file.exists():
-        content = skipped_file.read_text().strip()
-        if content:
-            all_skipped.update(content.split("\n"))
-    
-    if all_skipped:
+    if skipped:
         skipped_file.parent.mkdir(parents=True, exist_ok=True)
-        skipped_file.write_text("\n".join(sorted(all_skipped)))
-        logging.info(f"All skipped masks ({len(all_skipped)}) saved to: {skipped_file}")
+        skipped_file.write_text("\n".join(sorted(skipped)))
+        logging.info(f"Skipped masks ({len(skipped)}) saved to: {skipped_file}")
+    elif skipped_file.exists():
+        skipped_file.unlink()
+        logging.info("No skipped masks this run; removed stale skipped_masks.txt")
 
 
 if __name__ == "__main__":

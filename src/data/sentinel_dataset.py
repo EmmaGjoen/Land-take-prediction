@@ -48,19 +48,25 @@ class SentinelDataset(Dataset):
         transform,
         slice_mode: str = None,
         frequency: str | int | None = None,
-        max_timesteps: int = 20 #(10 years (2016-2025) * 2 quarters = 20)
+        end_years: dict[str, int] | None = None,
+        max_timesteps: int | None = None,
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
         slice_mode: None or "first_half", or a specific year (as int): 2019, 2020, 2021, 2022, 2023
         transform: Transform to apply (flips, rotations, normalization)
         frequency: two quarters a year as default, optional: annual
-        max_timesteps: The global maximum sequence length to pad all chips to.
+        end_years: mapping of refid -> endYear from annotations metadata.
+            Sentinel timesteps after endYear are zeroed AFTER normalization,
+            so U-TAE's pad_value=0.0 detection masks them correctly.
+        max_timesteps: If set, pad or truncate the time axis to this length.
+            Leave as None when all tiles share the same T.
         """
         self.ids = ids
         self.slice_mode = slice_mode
         self.transform = transform
         self.frequency = frequency
+        self.end_years = end_years
         self.max_timesteps = max_timesteps
 
         # Pre-resolve image and mask paths once for stability and speed
@@ -91,8 +97,12 @@ class SentinelDataset(Dataset):
         with rasterio.open(mask_path) as src_m:
             mask = src_m.read(1)  # (H, W)
 
-        # Positions of the years included in the image+mask timeseries, relative to the range of maximum possible timesteps
-        positions = torch.arange(4, 18, dtype=torch.long)
+        # Warn if Sentinel and mask have different spatial dimensions (data quality check)
+        if img.shape[-2:] != mask.shape:
+            print(
+                f"[WARN] spatial mismatch for {fid}: "
+                f"Sentinel {img.shape[-2:]} vs mask {mask.shape}"
+            )
 
         # reshape to (T, C, H, W)
         # (old data:) Expected layout: 126 = 7 years * 2 quarters * 9 bands
@@ -124,11 +134,21 @@ class SentinelDataset(Dataset):
 
         # optionally take first half of the time series
         if self.slice_mode == "first_half":
-            current_T = img.shape[0]
-            half_T = current_T // 2
-            img = img[: half_T]
-            positions = positions[:half_T]
-            current_T = half_T
+            img = img[: img.shape[0] // 2]
+
+        # Compute positions encoding absolute temporal location.
+        # All Sentinel tiles start at 2018; we encode relative to base year 2016
+        # so positions are non-zero (avoids collision with pad position=0).
+        # Annual:    2018=2, 2019=3, ..., 2024=8
+        # Quarterly: 2018Q1=4, 2018Q2=5, 2019Q1=6, ..., 2024Q2=17
+        current_T = img.shape[0]
+        BASE_YEAR = 2016
+        START_YEAR = 2018
+        if self.frequency == "annual":
+            start_pos = START_YEAR - BASE_YEAR          # 2
+        else:
+            start_pos = (START_YEAR - BASE_YEAR) * 2   # 4
+        positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
 
         # to torch tensors
         img = torch.from_numpy(img).float()     # (T, C, H, W)
@@ -139,13 +159,24 @@ class SentinelDataset(Dataset):
         if self.transform is not None:
             img, mask = self.transform(img, mask)
 
-        # Apply padding after transform(normalization) so the empty timesteps remain exactly 0.0
+        # Apply endYear masking AFTER normalization so masked timesteps are
+        # exactly 0.0 — the value U-TAE's pad_value detection compares against.
+        if self.end_years is not None:
+            end_year = self.end_years.get(fid)
+            if end_year is not None and end_year in YEARS:
+                if self.frequency == "annual":
+                    n_valid = min(YEARS.index(end_year) + 1, current_T)
+                else:
+                    n_valid = min((YEARS.index(end_year) + 1) * 2, current_T)
+                img[n_valid:] = 0.0
+                positions[n_valid:] = 0
+
+        # Pad or truncate to max_timesteps if set (needed when T varies per tile).
+        # Padding is zeros so U-TAE treats them as masked timesteps automatically.
         if self.max_timesteps is not None:
-            current_T = img.shape[0]
             if current_T < self.max_timesteps:
                 pad_len = self.max_timesteps - current_T
                 img = F.pad(img, (0, 0, 0, 0, 0, 0, 0, pad_len))
-                # Pad positions with 0s at the end
                 positions = F.pad(positions, (0, pad_len))
             elif current_T > self.max_timesteps:
                 img = img[:self.max_timesteps]

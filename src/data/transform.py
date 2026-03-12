@@ -22,20 +22,19 @@ def compute_normalization_stats(
     num_samples = min(num_samples, len(dataset))
     indices = random.sample(range(len(dataset)), num_samples)
 
-    first_sample = dataset[indices[0]]
-    first_chip = first_sample[0]
+    first_chip = dataset[indices[0]][0]
     if first_chip.dim() == 4:
         C = first_chip.shape[1]
     elif first_chip.dim() == 3:
         C = first_chip.shape[0]
     else:
         raise ValueError(f"Expected 3D or 4D tensor, got shape {first_chip.shape}")
-    
+
     # Initialize running sums for the exact global calculation
     pixel_count = 0
     channel_sum = torch.zeros(C, dtype=torch.float64)
     channel_sum_sq = torch.zeros(C, dtype=torch.float64)
-    
+
     for idx in indices:
         img_tensor = dataset[idx][0]
         
@@ -137,22 +136,22 @@ class CenterCropTS:
     def __call__(self, x, mask):
         T, C, H, W = x.shape
         s = self.size
-        
-        # Pad if smaller than target size
+
+        # --- image ---
         if H < s or W < s:
-            pad_h = max(0, s - H)
-            pad_w = max(0, s - W)
-            x = F.pad(x, (0, pad_w, 0, pad_h), mode="constant", value=0)
-            mask = F.pad(mask, (0, pad_w, 0, pad_h), mode="constant", value=0)
+            x = F.pad(x, (0, max(0, s - W), 0, max(0, s - H)), mode="constant", value=0)
             T, C, H, W = x.shape
-        
-        # Center crop if larger than target size
         if H > s or W > s:
-            top = (H - s) // 2
-            left = (W - s) // 2
-            x = x[:, :, top:top+s, left:left+s]
-            mask = mask[top:top+s, left:left+s]
-        
+            x = x[:, :, (H - s) // 2:(H - s) // 2 + s, (W - s) // 2:(W - s) // 2 + s]
+
+        # --- mask: apply same logic independently so mismatched tile sizes don't silently truncate ---
+        mH, mW = mask.shape
+        if mH < s or mW < s:
+            mask = F.pad(mask, (0, max(0, s - mW), 0, max(0, s - mH)), mode="constant", value=0)
+            mH, mW = mask.shape
+        if mH > s or mW > s:
+            mask = mask[(mH - s) // 2:(mH - s) // 2 + s, (mW - s) // 2:(mW - s) // 2 + s]
+
         return x, mask
     
 class NormalizeBy:

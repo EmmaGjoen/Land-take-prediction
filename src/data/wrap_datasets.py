@@ -1,7 +1,6 @@
 import random
 import torch
 from torch.utils.data import Dataset
-import numpy as np
 
 
 class FusedDataset(Dataset):
@@ -26,7 +25,7 @@ class FusedDataset(Dataset):
         random.seed(sample_seed)
         torch.manual_seed(sample_seed)
         # This will trigger RandomFlipTS/RandomRotate90TS using sample_seed
-        sen_img, mask = self.sentinel_ds[idx]
+        sen_img, mask, _ = self.sentinel_ds[idx]
 
         # 3. Transform AlphaEarth
         random.seed(sample_seed)
@@ -49,6 +48,12 @@ class FusedSentinelTesseraDataset(Dataset):
     DATASET_NAME = "fused_sentinel_tessera"
 
     def __init__(self, sentinel_ds, tessera_ds):
+        if len(sentinel_ds) != len(tessera_ds):
+            raise ValueError(
+                f"Dataset length mismatch: sentinel_ds has {len(sentinel_ds)} samples "
+                f"but tessera_ds has {len(tessera_ds)}. Ensure both are built from the "
+                f"same filtered ID list."
+            )
         self.sentinel_ds = sentinel_ds
         self.tessera_ds = tessera_ds
 
@@ -60,7 +65,7 @@ class FusedSentinelTesseraDataset(Dataset):
 
         random.seed(sample_seed)
         torch.manual_seed(sample_seed)
-        sen_img, mask = self.sentinel_ds[idx]
+        sen_img, mask, _ = self.sentinel_ds[idx]
 
         random.seed(sample_seed)
         torch.manual_seed(sample_seed)

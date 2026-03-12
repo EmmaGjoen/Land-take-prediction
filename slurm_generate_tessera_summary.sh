@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=tessera_summary
+#SBATCH --account=share-ie-idi
 #SBATCH --output=logs/tessera_summary_%j.out
 #SBATCH --error=logs/tessera_summary_%j.err
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --partition=GPUQ
+#SBATCH --partition=CPUQ
 
 echo "=========================================="
 echo "Job started: $(date)"
@@ -20,9 +21,8 @@ SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
 cd "$SUBMIT_DIR"
 
 mkdir -p logs
-mkdir -p "${SUBMIT_DIR}/verification"
 
-OUT_FILE="${SUBMIT_DIR}/COVERAGE_SUMMARY.md"
+OUT_FILE="data/processed/tessera/COVERAGE_SUMMARY.md"
 
 echo "Working dir: $(pwd)"
 echo "Writing summary to: $OUT_FILE"

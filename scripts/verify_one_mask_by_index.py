@@ -33,7 +33,7 @@ def load_verify_module(module_path: Path):
     return module
 
 
-_CSV_HEADER = ["refid", "status", "crs", "shape", "bounds", "transform", "mask_shape", "tessera_shape", "tessera_bands"]
+_CSV_HEADER = ["refid", "status", "crs", "shape", "bounds", "transform", "complete", "valid_pixel_fraction", "mask_shape", "tessera_shape", "tessera_bands"]
 
 
 def _append_result_row(results_file: Path, row: dict) -> None:
@@ -121,6 +121,8 @@ def main() -> None:
             "shape": matches["shape"],
             "bounds": matches["bounds"],
             "transform": matches["transform"],
+            "complete": matches["complete"],
+            "valid_pixel_fraction": f"{result['valid_pixel_fraction']:.4f}",
             "mask_shape": result["mask_meta"]["shape"],
             "tessera_shape": result["tessera_meta"]["shape"],
             "tessera_bands": result["tessera_meta"]["bands"],

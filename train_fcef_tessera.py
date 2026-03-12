@@ -69,7 +69,7 @@ CONFIG = {
     "augment_train": True,
 
     # Normalization
-    "normalization": "scale_10000_plus_standardize",
+    "normalization": "sentinel_scale_10000_plus_standardize__tessera_none",
     "num_samples_for_stats": 2000,
 
     # DataLoader
@@ -230,27 +230,6 @@ def main():
     print(f"  mean (first 5): {[f'{m:.4f}' for m in mean_sen[:5]]}")
     print(f"  std  (first 5): {[f'{s:.4f}' for s in std_sen[:5]]}")
 
-    # Tessera stats
-    temp_transform_tess = ComposeTS([
-        CenterCropTS(CONFIG["chip_size"]),
-    ])
-    # no slice_mode for Tessera. The year list already selects the
-    # temporal subset that matches Sentinel's first-half slice.
-    temp_ds_tess = TesseraDataset(
-        train_ref_ids,
-        slice_mode=None,
-        frequency=CONFIG["img_frequency"],
-        transform=temp_transform_tess,
-        years=CONFIG["tessera_years"],
-    )
-    print("Estimating Tessera per-channel mean/std from training data...")
-    mean_tess, std_tess = compute_normalization_stats(
-        temp_ds_tess, num_samples=CONFIG["num_samples_for_stats"]
-    )
-    print(f"Tessera stats: {len(mean_tess)} channels")
-    print(f"  mean (first 5): {[f'{m:.4f}' for m in mean_tess[:5]]}")
-    print(f"  std  (first 5): {[f'{s:.4f}' for s in std_tess[:5]]}")
-
     # ------------------------------------------------------------------
     # Transforms
     # ------------------------------------------------------------------
@@ -266,7 +245,6 @@ def main():
             CenterCropTS(CONFIG["chip_size"]),
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
-            Normalize(mean_tess, std_tess),
         ])
     else:
         train_transform_sen = ComposeTS([
@@ -276,7 +254,6 @@ def main():
         ])
         train_transform_tess = ComposeTS([
             CenterCropTS(CONFIG["chip_size"]),
-            Normalize(mean_tess, std_tess),
         ])
 
     val_transform_sen = ComposeTS([
@@ -286,7 +263,6 @@ def main():
     ])
     val_transform_tess = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),
-        Normalize(mean_tess, std_tess),
     ])
 
     test_transform_sen = ComposeTS([
@@ -296,7 +272,6 @@ def main():
     ])
     test_transform_tess = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),
-        Normalize(mean_tess, std_tess),
     ])
 
     # ------------------------------------------------------------------
@@ -328,7 +303,7 @@ def main():
 
     # Temporal alignment sanity check: verify Sentinel and Tessera have same T
     print("\n--- Temporal alignment check ---")
-    sample_sen, _ = train_ds_sen[0]
+    sample_sen, _, _ = train_ds_sen[0]
     sample_tess, _ = train_ds_tess[0]
     T_sen, C_sen = sample_sen.shape[0], sample_sen.shape[1]
     T_tess, C_tess = sample_tess.shape[0], sample_tess.shape[1]
@@ -373,6 +348,10 @@ def main():
     )
 
     print(f"Dataloaders created with reproducible shuffling (seed={CONFIG['random_seed']})")
+
+    checkpoint_dir = Path("checkpoints") / f"fcef_tessera_{CONFIG['img_frequency']}_chip{CONFIG['chip_size']}"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Checkpoints will be saved to: {checkpoint_dir}")
 
     # ------------------------------------------------------------------
     # Model
@@ -440,6 +419,8 @@ def main():
     print("TRAINING")
     print("=" * 80)
 
+    best_val_iou = 0.0
+
     for epoch in range(CONFIG["epochs"]):
         model.train()
         total_loss = 0.0
@@ -504,6 +485,14 @@ def main():
             f"Rec={val_metrics['recall']:.4f} "
             f"Acc={val_metrics['accuracy']:.4f}"
         )
+
+        if val_metrics["iou"] > best_val_iou:
+            best_val_iou = val_metrics["iou"]
+            torch.save(model.state_dict(), checkpoint_dir / "best_model.pth")
+            print(f"  → New best model saved (val IoU={best_val_iou:.4f})")
+
+    torch.save(model.state_dict(), checkpoint_dir / "final_model.pth")
+    print(f"Final model saved to {checkpoint_dir / 'final_model.pth'}")
 
     # ------------------------------------------------------------------
     # Test evaluation

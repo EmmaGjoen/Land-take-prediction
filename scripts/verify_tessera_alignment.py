@@ -12,11 +12,12 @@ from pathlib import Path
 import os
 import matplotlib
 
-# Force a non-interactive backend if none is set. This makes the script safe
-# to run on headless clusters (SLURM jobs) where an X display is unavailable.
+# Force non-interactive backend on headless clusters (e.g. SLURM) where no
+# X display is available. Only override if the caller hasn't set one explicitly.
 if os.environ.get("MPLBACKEND") is None:
-    matplotlib.use(os.environ.get("MPLBACKEND", "Agg"))
+    matplotlib.use("Agg")
 
+import numpy as np
 import matplotlib.pyplot as plt
 import rasterio
 
@@ -42,11 +43,14 @@ def verify_alignment(mask_path: Path, tessera_path: Path) -> dict:
         }
         tessera_data = tsrc.read(1)  # First band for visualization
 
+    valid_pixel_fraction = float(np.count_nonzero(tessera_data) / tessera_data.size)
+
     matches = {
         "crs": mask_meta["crs"] == tessera_meta["crs"],
         "shape": mask_meta["shape"] == tessera_meta["shape"],
         "bounds": mask_meta["bounds"] == tessera_meta["bounds"],
         "transform": mask_meta["transform"] == tessera_meta["transform"],
+        "complete": valid_pixel_fraction >= 0.95,
     }
 
     return {
@@ -55,6 +59,7 @@ def verify_alignment(mask_path: Path, tessera_path: Path) -> dict:
         "matches": matches,
         "mask_data": mask_data,
         "tessera_data": tessera_data,
+        "valid_pixel_fraction": valid_pixel_fraction,
     }
 
 
@@ -93,7 +98,9 @@ def plot_comparison(
     # Add metadata comparison as text
     matches = result["matches"]
     match_text = "\n".join([f"{k}: {'✓' if v else '✗'}" for k, v in matches.items()])
-    fig.text(0.02, 0.02, f"Alignment check:\n{match_text}", fontsize=10, family="monospace")
+    vpf = result.get("valid_pixel_fraction")
+    vpf_line = f"\nvalid pixels: {vpf:.1%}" if vpf is not None else ""
+    fig.text(0.02, 0.02, f"Alignment check:\n{match_text}{vpf_line}", fontsize=10, family="monospace")
     
     plt.tight_layout()
     
@@ -133,10 +140,11 @@ def main() -> None:
         matches = result["matches"]
         
         print(f"\n{refid}:")
-        print(f"  CRS match:       {matches['crs']}")
-        print(f"  Shape match:     {matches['shape']} ({result['mask_meta']['shape']})")
-        print(f"  Bounds match:    {matches['bounds']}")
-        print(f"  Transform match: {matches['transform']}")
+        print(f"  CRS match:          {matches['crs']}")
+        print(f"  Shape match:        {matches['shape']} ({result['mask_meta']['shape']})")
+        print(f"  Bounds match:       {matches['bounds']}")
+        print(f"  Transform match:    {matches['transform']}")
+        print(f"  Complete (≥95%):    {matches['complete']} ({result['valid_pixel_fraction']:.1%} valid pixels)")
         
         if not all(matches.values()):
             all_match = False
