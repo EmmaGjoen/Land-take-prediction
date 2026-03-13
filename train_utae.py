@@ -1,4 +1,5 @@
 import sys
+import argparse
 import random
 from pathlib import Path
 
@@ -55,9 +56,10 @@ CONFIG = {
     "temporal_mode": None,          # None = use all 14 timesteps
     "img_frequency": None,
     "chip_size": 64,
+    "prediction_horizon": 2,        # K: zero timesteps from (endYear - K) onwards per tile
 
     # Training
-    "epochs": 75,                   # more epochs (LR scheduler handles convergence)
+    "epochs": 75,
     "learning_rate": 1e-3,
     "lr_patience": 7,               # epochs with no val_loss improvement before LR halves
     "lr_factor": 0.5,               # multiply LR by this when patience runs out
@@ -133,6 +135,14 @@ def get_device():
 # ============================================================================
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--prediction_horizon", type=int, default=None,
+                        help="Override CONFIG prediction_horizon (K)")
+    args = parser.parse_args()
+    if args.prediction_horizon is not None:
+        CONFIG["prediction_horizon"] = args.prediction_horizon
+        print(f"prediction_horizon overridden via CLI: K={CONFIG['prediction_horizon']}")
+
     # Set random seeds
     set_random_seeds(CONFIG["random_seed"])
     
@@ -230,6 +240,7 @@ def main():
         frequency=CONFIG["img_frequency"],
         transform=train_transform,
         end_years=end_years,
+        prediction_horizon=CONFIG["prediction_horizon"],
     )
 
     print(f"DEBUG: Config Year/slice: {CONFIG['temporal_mode']}")
@@ -243,6 +254,7 @@ def main():
         frequency=CONFIG["img_frequency"],
         transform=val_transform,
         end_years=end_years,
+        prediction_horizon=CONFIG["prediction_horizon"],
     )
     test_ds = SentinelDataset(
         test_ref_ids,
@@ -250,6 +262,7 @@ def main():
         frequency=CONFIG["img_frequency"],
         transform=test_transform,
         end_years=end_years,
+        prediction_horizon=CONFIG["prediction_horizon"],
     )
     
     print(f"✓ Datasets created for pre-cropped {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
@@ -345,7 +358,7 @@ def main():
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}",
+        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}_K{CONFIG['prediction_horizon']}",
         config={
             "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],
@@ -367,6 +380,7 @@ def main():
             "test_ratio": CONFIG["test_ratio"],
             "end_years_masking": True,
             "num_tiles_with_end_year": len(end_years),
+            "prediction_horizon": CONFIG["prediction_horizon"],
             "loss": "weighted_cross_entropy",
             "positive_class_weight": CONFIG["positive_class_weight"],
             "lr_scheduler": "ReduceLROnPlateau",

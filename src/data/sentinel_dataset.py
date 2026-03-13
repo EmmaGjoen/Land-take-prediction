@@ -50,6 +50,7 @@ class SentinelDataset(Dataset):
         frequency: str | int | None = None,
         end_years: dict[str, int] | None = None,
         max_timesteps: int | None = None,
+        prediction_horizon: int = 2,
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
@@ -61,13 +62,38 @@ class SentinelDataset(Dataset):
             so U-TAE's pad_value=0.0 detection masks them correctly.
         max_timesteps: If set, pad or truncate the time axis to this length.
             Leave as None when all tiles share the same T.
+        prediction_horizon: Number of years before endYear to cut off.
+            With K=2, the model only sees data up to endYear-2, forcing it to
+            predict land take K years in advance (per tile, using each tile's endYear).
         """
-        self.ids = ids
         self.slice_mode = slice_mode
         self.transform = transform
         self.frequency = frequency
         self.end_years = end_years
         self.max_timesteps = max_timesteps
+        self.prediction_horizon = prediction_horizon
+
+        # Drop tiles whose cutoff year falls outside the Sentinel record (YEARS).
+        # This happens when prediction_horizon is large relative to a tile's endYear,
+        # e.g. endYear=2022 with K=5 → cutoff=2017 < YEARS[0].
+        if end_years is not None and prediction_horizon > 0:
+            filtered = []
+            dropped = []
+            for fid in ids:
+                ey = end_years.get(fid)
+                if ey is not None and (ey - prediction_horizon) not in YEARS:
+                    dropped.append(fid)
+                else:
+                    filtered.append(fid)
+            if dropped:
+                print(
+                    f"[SentinelDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s) "
+                    f"whose cutoff year falls outside YEARS (e.g. endYear too small). "
+                    f"{len(filtered)} tiles remain."
+                )
+            self.ids = filtered
+        else:
+            self.ids = list(ids)
 
         # Pre-resolve image and mask paths once for stability and speed
         self.img_paths: dict[str, Path] = {}
@@ -159,15 +185,22 @@ class SentinelDataset(Dataset):
         if self.transform is not None:
             img, mask = self.transform(img, mask)
 
-        # Apply endYear masking AFTER normalization so masked timesteps are
+        # Apply prediction_horizon masking AFTER normalization so masked timesteps are
         # exactly 0.0 — the value U-TAE's pad_value detection compares against.
+        # With prediction_horizon=K, the model only sees data up to (endYear - K),
+        # forcing it to predict land take K years in advance (per tile).
         if self.end_years is not None:
             end_year = self.end_years.get(fid)
-            if end_year is not None and end_year in YEARS:
+            if end_year is not None:
+                cutoff_year = end_year - self.prediction_horizon
+                assert cutoff_year in YEARS, (
+                    f"cutoff_year {cutoff_year} not in YEARS for {fid} — "
+                    f"should have been filtered out in __init__"
+                )
                 if self.frequency == "annual":
-                    n_valid = min(YEARS.index(end_year) + 1, current_T)
+                    n_valid = min(YEARS.index(cutoff_year) + 1, current_T)
                 else:
-                    n_valid = min((YEARS.index(end_year) + 1) * 2, current_T)
+                    n_valid = min((YEARS.index(cutoff_year) + 1) * 2, current_T)
                 img[n_valid:] = 0.0
                 positions[n_valid:] = 0
 
