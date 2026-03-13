@@ -21,7 +21,7 @@ root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
 from src.config import SENTINEL_DIR
-from src.data.alphaearth_dataset import AlphaEarthDataset
+from src.data.alphaearth_dataset_w_masks import AlphaEarthMaskDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
     compute_normalization_stats,
@@ -160,19 +160,19 @@ def main():
     ])
 
     # Create AlphaEarth datasets
-    train_ds = AlphaEarthDataset(
+    train_ds = AlphaEarthMaskDataset(
         train_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=train_transform_alpha,
     )
-    val_ds = AlphaEarthDataset(
+    val_ds = AlphaEarthMaskDataset(
         val_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=val_transform_alpha,
     )
-    test_ds = AlphaEarthDataset(
+    test_ds = AlphaEarthMaskDataset(
         test_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
