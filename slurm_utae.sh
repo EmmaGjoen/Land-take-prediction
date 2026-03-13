@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=utae_new_data
+#SBATCH --job-name=utae_K${K:-2}
 #SBATCH --account=share-ie-idi
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
@@ -50,8 +50,11 @@ echo ""
 
 mkdir -p logs/utae
 
+# Accept prediction horizon K from environment (default 2)
+K=${K:-2}
+echo "Prediction horizon K=${K}"
 echo "Starting python train_utae.py"
-python train_utae.py
+python train_utae.py --prediction_horizon "$K"
 
 echo ""
 echo "=========================================="
