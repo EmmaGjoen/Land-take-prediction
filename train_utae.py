@@ -243,11 +243,6 @@ def main():
         prediction_horizon=CONFIG["prediction_horizon"],
     )
 
-    print(f"DEBUG: Config Year/slice: {CONFIG['temporal_mode']}")
-    print(f"DEBUG: Dataset Slice Mode: {train_ds.slice_mode}")
-    sample_x_checking, _, _ = train_ds[0]
-    print(f"DEBUG: Single sample shape: {sample_x_checking.shape}")
-
     val_ds = SentinelDataset(
         val_ref_ids,
         slice_mode=CONFIG["temporal_mode"],
@@ -287,13 +282,13 @@ def main():
     )
     val_loader = DataLoader(
         val_ds,
-        batch_size=1,  # Use batch_size=1 for stable validation on small datasets
+        batch_size=CONFIG["batch_size"],
         shuffle=False,
         num_workers=CONFIG["num_workers"],
     )
     test_loader = DataLoader(
         test_ds,
-        batch_size=1,  # Use batch_size=1 for stable test evaluation
+        batch_size=CONFIG["batch_size"],
         shuffle=False,
         num_workers=CONFIG["num_workers"],
     )
@@ -319,12 +314,11 @@ def main():
     print(f"  Classes: {CONFIG['num_classes']}")
     print(f"  Input shape: (B, {T}, {C}, {H}, {W})")
     
-    # Loss, optimizer, and scaler
+    # Loss, optimizer
     print("\n" + "="*80)
     print("CLASS WEIGHTS")
     print("="*80)
-    class_weights = torch.tensor([1.0, CONFIG["positive_class_weight"]], dtype=torch.float32)
-    print(f"  → positive class weight: {CONFIG['positive_class_weight']} (set in CONFIG)")
+    class_weights = compute_class_weights(train_ref_ids, MASK_DIR)
     criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
     optimizer = Adam(model.parameters(), lr=CONFIG["learning_rate"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -333,7 +327,6 @@ def main():
         factor=CONFIG["lr_factor"],
         patience=CONFIG["lr_patience"],
     )
-    scaler = torch.cuda.amp.GradScaler()
     
     # Initialize WandB
     print("\n" + "="*80)
@@ -382,7 +375,7 @@ def main():
             "num_tiles_with_end_year": len(end_years),
             "prediction_horizon": CONFIG["prediction_horizon"],
             "loss": "weighted_cross_entropy",
-            "positive_class_weight": CONFIG["positive_class_weight"],
+            "positive_class_weight": class_weights[1].item(),
             "lr_scheduler": "ReduceLROnPlateau",
             "lr_patience": CONFIG["lr_patience"],
             "lr_factor": CONFIG["lr_factor"],
