@@ -66,9 +66,6 @@ CONFIG = {
     "batch_size": 4,
     "augment_train": True,  # Enable spatial augmentation (flips, rotations)
     
-    # Loss
-    "positive_class_weight": 4.0,  # weight for land take class in CrossEntropyLoss
-
     # Normalization
     "normalization": "scale_10000_plus_standardize",
     "num_samples_for_stats": 2000,
