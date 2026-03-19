@@ -58,4 +58,4 @@ for d in [REPORTS_DIR, FIGURES_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # Chronological mapping of years present in the Sentinel time-series (ordered)
-YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024]
+YEARS = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
