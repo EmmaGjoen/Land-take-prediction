@@ -109,6 +109,36 @@ class SentinelDataset(Dataset):
         else:
             self.ids = list(ids)
 
+        # Drop tiles that don't have enough years for the requested sequence length N.
+        if input_years is not None and end_years is not None:
+            filtered = []
+            dropped = []
+            for fid in self.ids:
+                ey = end_years.get(fid)
+                if ey is None:
+                    filtered.append(fid)
+                    continue
+                cutoff_year = ey - prediction_horizon
+                if cutoff_year not in YEARS:
+                    filtered.append(fid)
+                    continue
+                tile_start = start_years.get(fid, YEARS[0]) if start_years else YEARS[0]
+                anchor_year = max(tile_start, YEARS[0])
+                cutoff_year_idx = YEARS.index(cutoff_year)
+                anchor_year_idx = YEARS.index(anchor_year)
+                available_years = cutoff_year_idx - anchor_year_idx + 1
+                if available_years < input_years:
+                    dropped.append(fid)
+                else:
+                    filtered.append(fid)
+            if dropped:
+                print(
+                    f"[SentinelDataset] N={input_years}: excluded {len(dropped)} tile(s) "
+                    f"with fewer than {input_years} available years between reference and cutoff. "
+                    f"{len(filtered)} tiles remain."
+                )
+            self.ids = filtered
+
         # Pre-resolve image and mask paths once for stability and speed
         self.img_paths: dict[str, Path] = {}
         self.mask_paths: dict[str, Path] = {}
