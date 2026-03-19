@@ -29,7 +29,7 @@ class UTAE(nn.Module):
         encoder=False,
         return_maps=False,
         pad_value=0,
-        padding_mode="reflect",
+        padding_mode='replicate',
     ):
         """
         U-TAE architecture for spatio-temporal encoding of satellite image time series.
@@ -185,18 +185,33 @@ class TemporallySharedBlock(nn.Module):
             return self.forward(input)
         else:
             b, t, c, h, w = input.shape
-
-            if self.pad_value is not None:
-                dummy = torch.zeros(input.shape, device=input.device).float()
-                self.out_shape = self.forward(dummy.view(b * t, c, h, w)).shape
-
+ 
             out = input.view(b * t, c, h, w)
             if self.pad_value is not None:
                 pad_mask = (out == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
+                # CHANGE TO ORIGINAL CODE:
                 if pad_mask.any():
+                    # Compute out_shape only once and cache it.
+                    if self.out_shape is None:
+                        
+                        # 1. Save the current state so we don't break the training loop
+                        was_training = self.training
+                        
+                        # 2. Force eval mode to completely prevent BatchNorm corruption
+                        self.eval()
+                        
+                        # 3. Use no_grad to save GPU memory during the dummy pass
+                        with torch.no_grad():
+                            dummy = torch.zeros(1, c, h, w, device=input.device)
+                            self.out_shape = self.forward(dummy).shape
+                            
+                        # 4. Safely restore the original mode (train or eval)
+                        self.train(was_training)
+                # END OF CHANGE
+                
                     temp = (
                         torch.ones(
-                            self.out_shape, device=input.device, requires_grad=False
+                            (b * t, *self.out_shape[1:]), device=input.device, requires_grad=False
                         )
                         * self.pad_value
                     )
@@ -210,7 +225,6 @@ class TemporallySharedBlock(nn.Module):
             out = out.view(b, t, c, h, w)
             return out
 
-
 class ConvLayer(nn.Module):
     def __init__(
         self,
@@ -221,7 +235,7 @@ class ConvLayer(nn.Module):
         p=1,
         n_groups=4,
         last_relu=True,
-        padding_mode="reflect",
+        padding_mode='replicate',
     ):
         super(ConvLayer, self).__init__()
         layers = []
@@ -267,7 +281,7 @@ class ConvBlock(TemporallySharedBlock):
         pad_value=None,
         norm="batch",
         last_relu=True,
-        padding_mode="reflect",
+        padding_mode='replicate',
     ):
         super(ConvBlock, self).__init__(pad_value=pad_value)
         self.conv = ConvLayer(
@@ -291,7 +305,7 @@ class DownConvBlock(TemporallySharedBlock):
         p,
         pad_value=None,
         norm="batch",
-        padding_mode="reflect",
+        padding_mode='replicate',
     ):
         super(DownConvBlock, self).__init__(pad_value=pad_value)
         self.down = ConvLayer(
@@ -322,7 +336,7 @@ class DownConvBlock(TemporallySharedBlock):
 
 class UpConvBlock(nn.Module):
     def __init__(
-        self, d_in, d_out, k, s, p, norm="batch", d_skip=None, padding_mode="reflect"
+        self, d_in, d_out, k, s, p, norm="batch", d_skip=None, padding_mode='replicate'
     ):
         super(UpConvBlock, self).__init__()
         d = d_out if d_skip is None else d_skip
@@ -437,7 +451,7 @@ class RecUNet(nn.Module):
         encoder_norm="group",
         hidden_dim=128,
         encoder=False,
-        padding_mode="reflect",
+        padding_mode='replicate',
         pad_value=0,
     ):
         super(RecUNet, self).__init__()

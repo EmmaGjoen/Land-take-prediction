@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=utae_old_data
+#SBATCH --job-name=utae_old_data__deterministic_11
 #SBATCH --account=share-ie-idi
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1

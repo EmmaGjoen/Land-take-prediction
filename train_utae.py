@@ -1,3 +1,8 @@
+import os
+
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
+
 import sys
 import random
 from pathlib import Path
@@ -66,7 +71,7 @@ CONFIG = {
     "num_samples_for_stats": 2000,
     
     # DataLoader
-    "num_workers": 4,
+    "num_workers": 0,
     
     # WandB
     "wandb_project": "data_variasjon_utae",
@@ -102,6 +107,7 @@ def get_device():
 
 def main():
     # Set random seeds
+    torch.use_deterministic_algorithms(True, warn_only=True)
     set_random_seeds(CONFIG["random_seed"])
     
     # Get device
@@ -234,12 +240,16 @@ def main():
         batch_size=1,  # Use batch_size=1 for stable validation on small datasets
         shuffle=False,
         num_workers=CONFIG["num_workers"],
+        worker_init_fn=worker_init_fn,
+        generator=torch.Generator().manual_seed(CONFIG["random_seed"])
     )
     test_loader = DataLoader(
         test_ds,
         batch_size=1,  # Use batch_size=1 for stable test evaluation
         shuffle=False,
         num_workers=CONFIG["num_workers"],
+        worker_init_fn=worker_init_fn,
+        generator=torch.Generator().manual_seed(CONFIG["random_seed"])
     )
     
     print(f"✓ Dataloaders created with reproducible shuffling (seed={CONFIG['random_seed']})")
@@ -263,10 +273,9 @@ def main():
     print(f"  Classes: {CONFIG['num_classes']}")
     print(f"  Input shape: (B, {T}, {C}, {H}, {W})")
     
-    # Loss, optimizer, and scaler
+    # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=CONFIG["learning_rate"])
-    scaler = torch.cuda.amp.GradScaler()
     
     # Initialize WandB
     print("\n" + "="*80)
@@ -291,7 +300,8 @@ def main():
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}",
+        #{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}
+        name=f"U-TAE_deterministic_11",
         config={
             "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],
@@ -331,7 +341,11 @@ def main():
             
             optimizer.zero_grad()
             logits = model(x, batch_positions=positions)
-            loss = criterion(logits, mask)
+
+            # Create TEMPORARY flat versions exclusively for the deterministic loss
+            flat_logits = logits.permute(0, 2, 3, 1).reshape(-1, 2)
+            flat_mask = mask.reshape(-1)
+            loss = criterion(flat_logits, flat_mask)
 
             loss.backward()
             optimizer.step()
@@ -350,7 +364,12 @@ def main():
                 mask = mask.to(device)
                 positions = positions.to(device)
                 logits = model(x, batch_positions=positions)
-                loss = criterion(logits, mask)
+                
+                # Create TEMPORARY flat versions exclusively for the deterministic loss
+                flat_logits = logits.permute(0, 2, 3, 1).reshape(-1, 2)
+                flat_mask = mask.reshape(-1)
+                loss = criterion(flat_logits, flat_mask)
+
                 val_loss += loss.item()
 
                 pred = torch.argmax(logits, dim=1)
@@ -402,7 +421,12 @@ def main():
             mask = mask.to(device)
             positions = positions.to(device)
             logits = model(x, batch_positions=positions)
-            loss = criterion(logits, mask)
+            
+            # Create TEMPORARY flat versions exclusively for the deterministic loss
+            flat_logits = logits.permute(0, 2, 3, 1).reshape(-1, 2)
+            flat_mask = mask.reshape(-1)
+            loss = criterion(flat_logits, flat_mask)
+            
             test_loss += loss.item()
 
             pred = torch.argmax(logits, dim=1)
