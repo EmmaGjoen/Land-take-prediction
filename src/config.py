@@ -8,7 +8,7 @@ DATA_ROOT = ROOT / "data" / "raw"
 
 SENTINEL_DIR    = DATA_ROOT / "Sentinel"
 MASK_DIR        = DATA_ROOT / "Land_take_masks_coarse"
-VHR_DIR         = DATA_ROOT / "vhr"
+VHR_DIR         = DATA_ROOT / "VHR_google"
 PLANETSCOPE_DIR = DATA_ROOT / "PlanetScope"
 ALPHAEARTH_DIR  = DATA_ROOT / "AlphaEarth"
 

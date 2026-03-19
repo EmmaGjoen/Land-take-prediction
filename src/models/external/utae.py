@@ -194,6 +194,26 @@ class TemporallySharedBlock(nn.Module):
             if self.pad_value is not None:
                 pad_mask = (out == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
                 if pad_mask.any():
+                     
+                    # CHANGE TO ORIGINAL CODE:
+                    # Compute out_shape only once and cache it.
+                    if self.out_shape is None:
+                    
+                        # Save the current state so we don't break the training loop
+                        was_training = self.training
+                    
+                        # Force eval mode to completely prevent BatchNorm corruption
+                        self.eval()
+                    
+                        # 3. Use no_grad to save GPU memory during the dummy pass
+                        with torch.no_grad():
+                            dummy = torch.zeros(1, c, h, w, device=input.device)
+                            self.out_shape = self.forward(dummy).shape
+                        
+                        # Safely restore the original mode (train or eval)
+                        self.train(was_training)
+                    # END OF CHANGE
+
                     temp = (
                         torch.ones(
                             self.out_shape, device=input.device, requires_grad=False
