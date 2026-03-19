@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=utae_K${K:-2}
+#SBATCH --job-name=utae_testrun
 #SBATCH --account=share-ie-idi
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1

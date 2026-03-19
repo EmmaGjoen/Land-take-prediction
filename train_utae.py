@@ -1,3 +1,7 @@
+import os
+
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
 import sys
 import argparse
 import random
@@ -282,12 +286,16 @@ def main():
         batch_size=CONFIG["batch_size"],
         shuffle=False,
         num_workers=CONFIG["num_workers"],
+        worker_init_fn=worker_init_fn,
+        generator=torch.Generator().manual_seed(CONFIG["random_seed"])
     )
     test_loader = DataLoader(
         test_ds,
         batch_size=CONFIG["batch_size"],
         shuffle=False,
         num_workers=CONFIG["num_workers"],
+        worker_init_fn=worker_init_fn,
+        generator=torch.Generator().manual_seed(CONFIG["random_seed"])
     )
     
     print(f"✓ Dataloaders created with reproducible shuffling (seed={CONFIG['random_seed']})")
