@@ -27,6 +27,19 @@ def load_end_years() -> dict[str, int]:
                 end_years[row["REFID"]] = int(row["endYear"])
     return end_years
 
+
+def load_start_years() -> dict[str, int]:
+    """Return {refid: startYear} for all tiles with valid metadata.
+
+    Tiles with NA startYear are silently skipped.
+    """
+    start_years: dict[str, int] = {}
+    with open(METADATA_PATH, newline="") as f:
+        for row in csv.DictReader(f):
+            if row["startYear"] != "NA":
+                start_years[row["REFID"]] = int(row["startYear"])
+    return start_years
+
 # Tessera embeddings (snapped to mask grid)
 TESSERA_DIR = ROOT / "data" / "processed" / "tessera" / "snapped_to_mask_grid"
 

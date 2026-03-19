@@ -16,7 +16,7 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import SENTINEL_DIR, MASK_DIR, load_end_years
+from src.config import SENTINEL_DIR, MASK_DIR, load_end_years, load_start_years
 import rasterio
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
@@ -57,6 +57,7 @@ CONFIG = {
     "img_frequency": None,
     "chip_size": 64,
     "prediction_horizon": 2,        # K: zero timesteps from (endYear - K) onwards per tile
+    "input_years": None,            # N: only show the last N years before the cutoff; None = all available
 
     # Training
     "epochs": 75,
@@ -135,10 +136,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--prediction_horizon", type=int, default=None,
                         help="Override CONFIG prediction_horizon (K)")
+    parser.add_argument("--input_years", type=int, default=None,
+                        help="Override CONFIG input_years (N): number of years before cutoff to show")
     args = parser.parse_args()
     if args.prediction_horizon is not None:
         CONFIG["prediction_horizon"] = args.prediction_horizon
         print(f"prediction_horizon overridden via CLI: K={CONFIG['prediction_horizon']}")
+    if args.input_years is not None:
+        CONFIG["input_years"] = args.input_years
+        print(f"input_years overridden via CLI: N={CONFIG['input_years']}")
 
     # Set random seeds
     set_random_seeds(CONFIG["random_seed"])
@@ -173,6 +179,8 @@ def main():
     # AFTER normalization so U-TAE's pad_value=0.0 masks them from attention.
     end_years = load_end_years()
     print(f"✓ Loaded endYear metadata for {len(end_years)} tiles")
+    start_years = load_start_years()
+    print(f"✓ Loaded startYear metadata for {len(start_years)} tiles")
     
     # Compute normalization stats
     print("\n" + "="*80)
@@ -237,7 +245,9 @@ def main():
         frequency=CONFIG["img_frequency"],
         transform=train_transform,
         end_years=end_years,
+        start_years=start_years,
         prediction_horizon=CONFIG["prediction_horizon"],
+        input_years=CONFIG["input_years"],
     )
 
     val_ds = SentinelDataset(
@@ -246,7 +256,9 @@ def main():
         frequency=CONFIG["img_frequency"],
         transform=val_transform,
         end_years=end_years,
+        start_years=start_years,
         prediction_horizon=CONFIG["prediction_horizon"],
+        input_years=CONFIG["input_years"],
     )
     test_ds = SentinelDataset(
         test_ref_ids,
@@ -254,7 +266,9 @@ def main():
         frequency=CONFIG["img_frequency"],
         transform=test_transform,
         end_years=end_years,
+        start_years=start_years,
         prediction_horizon=CONFIG["prediction_horizon"],
+        input_years=CONFIG["input_years"],
     )
     
     print(f"✓ Datasets created for pre-cropped {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
@@ -348,7 +362,7 @@ def main():
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}_K{CONFIG['prediction_horizon']}",
+        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}_K{CONFIG['prediction_horizon']}_N{CONFIG['input_years']}",
         config={
             "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],
@@ -371,6 +385,7 @@ def main():
             "end_years_masking": True,
             "num_tiles_with_end_year": len(end_years),
             "prediction_horizon": CONFIG["prediction_horizon"],
+            "input_years": CONFIG["input_years"],
             "loss": "weighted_cross_entropy",
             "positive_class_weight": class_weights[1].item(),
             "lr_scheduler": "ReduceLROnPlateau",

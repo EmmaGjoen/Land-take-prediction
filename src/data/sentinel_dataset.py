@@ -49,8 +49,10 @@ class SentinelDataset(Dataset):
         slice_mode: str = None,
         frequency: str | int | None = None,
         end_years: dict[str, int] | None = None,
+        start_years: dict[str, int] | None = None,
         max_timesteps: int | None = None,
         prediction_horizon: int = 2,
+        input_years: int | None = None,
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
@@ -58,20 +60,32 @@ class SentinelDataset(Dataset):
         transform: Transform to apply (flips, rotations, normalization)
         frequency: two quarters a year as default, optional: annual
         end_years: mapping of refid -> endYear from annotations metadata.
-            Sentinel timesteps after endYear are zeroed AFTER normalization,
+            Sentinel timesteps after endYear are zeroed after normalization,
             so U-TAE's pad_value=0.0 detection masks them correctly.
+        start_years: mapping of refid -> startYear from annotations metadata.
+            Used as the per-tile anchor year for input_years selection.
+            startYear values before YEARS[0] (2018) are clamped to YEARS[0]
+            since Sentinel data does not extend before 2018.
         max_timesteps: If set, pad or truncate the time axis to this length.
             Leave as None when all tiles share the same T.
-        prediction_horizon: Number of years before endYear to cut off.
+        prediction_horizon: Number of years before endYear to cut off (K).
             With K=2, the model only sees data up to endYear-2, forcing it to
             predict land take K years in advance (per tile, using each tile's endYear).
+        input_years: If set, selects N years per tile: the per-tile anchor year
+            (startYear, clamped to 2018) plus the latest N-1 years up to the
+            cutoff (endYear - K). Timesteps before the anchor and in the gap
+            between anchor and latest window are zeroed. With N=1 only the
+            anchor year is visible; with N >= total available years all years
+            from anchor to cutoff are visible.
         """
         self.slice_mode = slice_mode
         self.transform = transform
         self.frequency = frequency
         self.end_years = end_years
+        self.start_years = start_years
         self.max_timesteps = max_timesteps
         self.prediction_horizon = prediction_horizon
+        self.input_years = input_years
 
         # Drop tiles whose cutoff year falls outside the Sentinel record (YEARS).
         # This happens when prediction_horizon is large relative to a tile's endYear,
@@ -203,6 +217,36 @@ class SentinelDataset(Dataset):
                     n_valid = min((YEARS.index(cutoff_year) + 1) * 2, current_T)
                 img[n_valid:] = 0.0
                 positions[n_valid:] = 0
+
+                # input_years masking: keep per-tile anchor year (startYear,
+                # clamped to YEARS[0]) + latest N-1 years up to the cutoff.
+                # Years before the anchor and the gap between anchor and the
+                # latest window are zeroed. This lets us vary temporal context
+                # length (N) independently of prediction horizon (K), while
+                # using as much of each tile's available history as possible.
+                if self.input_years is not None:
+                    steps_per_year = 1 if self.frequency == "annual" else 2
+                    cutoff_year_idx = YEARS.index(cutoff_year)
+
+                    # Per-tile anchor: startYear clamped to first Sentinel year
+                    tile_start = self.start_years.get(fid, YEARS[0]) if self.start_years else YEARS[0]
+                    anchor_year = max(tile_start, YEARS[0])
+                    anchor_year_idx = YEARS.index(anchor_year)
+
+                    # Zero timesteps before the anchor
+                    anchor_ts = anchor_year_idx * steps_per_year
+                    if anchor_ts > 0:
+                        img[:anchor_ts] = 0.0
+                        positions[:anchor_ts] = 0
+
+                    # First timestep of the latest (N-1)-year window
+                    latest_window_start = (cutoff_year_idx - (self.input_years - 2)) * steps_per_year
+                    # Gap = everything after anchor and before the latest window
+                    gap_start = (anchor_year_idx + 1) * steps_per_year
+                    gap_end = latest_window_start
+                    if gap_start < gap_end:
+                        img[gap_start:gap_end] = 0.0
+                        positions[gap_start:gap_end] = 0
 
         # Pad or truncate to max_timesteps if set (needed when T varies per tile).
         # Padding is zeros so U-TAE treats them as masked timesteps automatically.

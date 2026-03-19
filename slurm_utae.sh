@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=utae_K${K:-2}
+#SBATCH --job-name=utae_K${K:-2}_N${INPUT_YEARS:-all}
 #SBATCH --account=share-ie-idi
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
@@ -50,11 +50,21 @@ echo ""
 
 mkdir -p logs/utae
 
-# Accept prediction horizon K from environment (default 2)
+# Accept prediction horizon K and input window N from environment
 K=${K:-2}
+INPUT_YEARS=${INPUT_YEARS:-}
+
 echo "Prediction horizon K=${K}"
-echo "Starting python train_utae.py"
-python train_utae.py --prediction_horizon "$K"
+echo "Input years N=${INPUT_YEARS:-all}"
+
+# Build python command — only pass --input_years if INPUT_YEARS is set
+CMD="python train_utae.py --prediction_horizon $K"
+if [ -n "$INPUT_YEARS" ]; then
+    CMD="$CMD --input_years $INPUT_YEARS"
+fi
+
+echo "Starting: $CMD"
+$CMD
 
 echo ""
 echo "=========================================="
