@@ -5,8 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from tqdm import tqdm
@@ -16,8 +14,7 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import SENTINEL_DIR, MASK_DIR, load_end_years
-import rasterio
+from src.config import SENTINEL_DIR, MASK_DIR, load_end_years, load_start_years
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
@@ -33,6 +30,7 @@ from src.data.transform import (
 from src.models.external.utae import UTAE
 from src.utils.visualization import log_masks
 from src.utils.metrics import compute_confusion_binary, compute_metrics_from_confusion
+from src.utils.focal_loss import FocalLoss
 
 
 # ============================================================================
@@ -53,10 +51,12 @@ CONFIG = {
     "num_classes": 2,
     
     # Data
-    "temporal_mode": None,          # None = use all 14 timesteps
+    "temporal_mode": None,          # None = use all timesteps
     "img_frequency": None,
     "chip_size": 64,
     "prediction_horizon": 2,        # K: zero timesteps from (endYear - K) onwards per tile
+    "input_years": None,            # N: only show the last N years before the cutoff; None = all available
+    "focal_gamma": 2.0,             # focusing parameter for focal loss (Lin et al., 2017)
 
     # Training
     "epochs": 75,
@@ -94,31 +94,6 @@ def set_random_seeds(seed):
     print(f"All random seeds set to {seed}")
 
 
-def compute_class_weights(ref_ids: list, mask_dir) -> torch.Tensor:
-    """Compute inverse-frequency class weights from training masks.
-
-    Returns a weight tensor [w_background, w_landtake] where w_landtake =
-    n_background / n_landtake, so the rare positive class gets proportionally
-    more weight in CrossEntropyLoss.
-    """
-    n_bg = 0
-    n_lt = 0
-    for fid in ref_ids:
-        paths = list(mask_dir.glob(f"{fid}*.tif"))
-        if not paths:
-            continue
-        with rasterio.open(paths[0]) as src:
-            mask = src.read(1)
-        n_lt += int((mask > 0).sum())
-        n_bg += int((mask == 0).sum())
-    if n_lt == 0:
-        raise RuntimeError("No positive (land take) pixels found in training masks.")
-    w_lt = n_bg / n_lt
-    print(f"  Background pixels : {n_bg:,}")
-    print(f"  Land take pixels  : {n_lt:,}  ({100*n_lt/(n_bg+n_lt):.1f}% of total)")
-    print(f"  → positive class weight: {w_lt:.1f}")
-    return torch.tensor([1.0, w_lt], dtype=torch.float32)
-
 
 def get_device():
     """Get device for training"""
@@ -135,10 +110,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--prediction_horizon", type=int, default=None,
                         help="Override CONFIG prediction_horizon (K)")
+    parser.add_argument("--input_years", type=int, default=None,
+                        help="Override CONFIG input_years (N): number of years before cutoff to show")
     args = parser.parse_args()
     if args.prediction_horizon is not None:
         CONFIG["prediction_horizon"] = args.prediction_horizon
         print(f"prediction_horizon overridden via CLI: K={CONFIG['prediction_horizon']}")
+    if args.input_years is not None:
+        CONFIG["input_years"] = args.input_years
+        print(f"input_years overridden via CLI: N={CONFIG['input_years']}")
 
     # Set random seeds
     set_random_seeds(CONFIG["random_seed"])
@@ -173,6 +153,8 @@ def main():
     # AFTER normalization so U-TAE's pad_value=0.0 masks them from attention.
     end_years = load_end_years()
     print(f"✓ Loaded endYear metadata for {len(end_years)} tiles")
+    start_years = load_start_years()
+    print(f"✓ Loaded startYear metadata for {len(start_years)} tiles")
     
     # Compute normalization stats
     print("\n" + "="*80)
@@ -237,7 +219,9 @@ def main():
         frequency=CONFIG["img_frequency"],
         transform=train_transform,
         end_years=end_years,
+        start_years=start_years,
         prediction_horizon=CONFIG["prediction_horizon"],
+        input_years=CONFIG["input_years"],
     )
 
     val_ds = SentinelDataset(
@@ -246,7 +230,9 @@ def main():
         frequency=CONFIG["img_frequency"],
         transform=val_transform,
         end_years=end_years,
+        start_years=start_years,
         prediction_horizon=CONFIG["prediction_horizon"],
+        input_years=CONFIG["input_years"],
     )
     test_ds = SentinelDataset(
         test_ref_ids,
@@ -254,7 +240,9 @@ def main():
         frequency=CONFIG["img_frequency"],
         transform=test_transform,
         end_years=end_years,
+        start_years=start_years,
         prediction_horizon=CONFIG["prediction_horizon"],
+        input_years=CONFIG["input_years"],
     )
     
     print(f"✓ Datasets created for pre-cropped {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
@@ -312,11 +300,8 @@ def main():
     print(f"  Input shape: (B, {T}, {C}, {H}, {W})")
     
     # Loss, optimizer
-    print("\n" + "="*80)
-    print("CLASS WEIGHTS")
-    print("="*80)
-    class_weights = compute_class_weights(train_ref_ids, MASK_DIR)
-    criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
+    criterion = FocalLoss(gamma=CONFIG["focal_gamma"]).to(device)
+    print(f"Using focal loss with gamma={CONFIG['focal_gamma']}")
     optimizer = Adam(model.parameters(), lr=CONFIG["learning_rate"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
@@ -345,37 +330,31 @@ def main():
 
     print("WANDB INITIALIZATION")
     print("="*80)
+    n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}_K{CONFIG['prediction_horizon']}",
+        name=f"UTAE_K{CONFIG['prediction_horizon']}_N{n_label}",
         config={
-            "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],
-            "dataset": train_ds.DATASET_NAME,
-            "epochs": CONFIG["epochs"],
-            "batch_size": CONFIG["batch_size"],
-            "chip_size": CONFIG["chip_size"],
-            "augment_train": CONFIG["augment_train"],
-            "augmentation": "flips_rotations" if CONFIG["augment_train"] else "none",
-            "temporal_mode": CONFIG["temporal_mode"],
+            "prediction_horizon_K": CONFIG["prediction_horizon"],
+            "input_years_N": CONFIG["input_years"],
             "num_timesteps": T,
-            "train_chips": len(train_ds),
-            "val_chips": len(val_ds),
-            "test_chips": len(test_ds),
-            "normalization": CONFIG["normalization"],
-            "random_seed": CONFIG["random_seed"],
-            "train_ratio": CONFIG["train_ratio"],
-            "val_ratio": CONFIG["val_ratio"],
-            "test_ratio": CONFIG["test_ratio"],
-            "end_years_masking": True,
-            "num_tiles_with_end_year": len(end_years),
-            "prediction_horizon": CONFIG["prediction_horizon"],
-            "loss": "weighted_cross_entropy",
-            "positive_class_weight": class_weights[1].item(),
+            "epochs": CONFIG["epochs"],
+            "learning_rate": CONFIG["learning_rate"],
             "lr_scheduler": "ReduceLROnPlateau",
             "lr_patience": CONFIG["lr_patience"],
             "lr_factor": CONFIG["lr_factor"],
+            "batch_size": CONFIG["batch_size"],
+            "chip_size": CONFIG["chip_size"],
+            "augmentation": "flips_rotations" if CONFIG["augment_train"] else "none",
+            "normalization": CONFIG["normalization"],
+            "loss": "focal_loss",
+            "focal_gamma": CONFIG["focal_gamma"],
+            "train_chips": len(train_ds),
+            "val_chips": len(val_ds),
+            "test_chips": len(test_ds),
+            "random_seed": CONFIG["random_seed"],
         },
     )
     print("✓ WandB initialized")
