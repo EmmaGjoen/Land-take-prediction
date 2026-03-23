@@ -7,7 +7,9 @@ from torch.utils.data import Dataset
 from src.config import (
     SENTINEL_DIR,
     MASK_DIR,
-    YEARS
+    YEARS,
+    load_end_years,
+    load_start_years
 )
 
 
@@ -48,7 +50,6 @@ class SentinelDataset(Dataset):
         transform,
         slice_mode: str = None,
         frequency: str | int | None = None,
-        end_years: dict[str, int] | None = None,
         max_timesteps: int | None = None,
         prediction_horizon: int = 2,
     ):
@@ -66,10 +67,15 @@ class SentinelDataset(Dataset):
             With K=2, the model only sees data up to endYear-2, forcing it to
             predict land take K years in advance (per tile, using each tile's endYear).
         """
+
+        end_years = load_end_years()
+        start_years = load_start_years()
+
         self.slice_mode = slice_mode
         self.transform = transform
         self.frequency = frequency
         self.end_years = end_years
+        self.start_years = start_years
         self.max_timesteps = max_timesteps
         self.prediction_horizon = prediction_horizon
 

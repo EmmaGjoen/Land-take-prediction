@@ -20,7 +20,7 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import SENTINEL_DIR, MASK_DIR, load_end_years
+from src.config import SENTINEL_DIR, MASK_DIR
 import rasterio
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
@@ -145,6 +145,7 @@ def main():
         print(f"prediction_horizon overridden via CLI: K={CONFIG['prediction_horizon']}")
 
     # Set random seeds
+    torch.use_deterministic_algorithms(True, warn_only=True)
     set_random_seeds(CONFIG["random_seed"])
     
     # Get device
@@ -175,8 +176,8 @@ def main():
 
     # Load per-tile endYear metadata. Sentinel tiles after endYear will be zeroed
     # AFTER normalization so U-TAE's pad_value=0.0 masks them from attention.
-    end_years = load_end_years()
-    print(f"✓ Loaded endYear metadata for {len(end_years)} tiles")
+    # end_years = load_end_years()
+    # print(f"✓ Loaded endYear metadata for {len(end_years)} tiles")
     
     # Compute normalization stats
     print("\n" + "="*80)
@@ -189,7 +190,7 @@ def main():
     
     temp_train_ds = SentinelDataset(
         train_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
+        # slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=temp_train_transform,
     )
@@ -237,27 +238,27 @@ def main():
     
     train_ds = SentinelDataset(
         train_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
+        # slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=train_transform,
-        end_years=end_years,
+        # end_years=end_years,
         prediction_horizon=CONFIG["prediction_horizon"],
     )
 
     val_ds = SentinelDataset(
         val_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
+        # slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=val_transform,
-        end_years=end_years,
+        # end_years=end_years,
         prediction_horizon=CONFIG["prediction_horizon"],
     )
     test_ds = SentinelDataset(
         test_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
+        # slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=test_transform,
-        end_years=end_years,
+        # end_years=end_years,
         prediction_horizon=CONFIG["prediction_horizon"],
     )
     
@@ -356,7 +357,7 @@ def main():
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_sliced:{CONFIG['temporal_mode']}_chip{CONFIG['chip_size']}_t{T}_K{CONFIG['prediction_horizon']}",
+        name=f"U-TAE_{train_ds.DATASET_NAME}_freq:{CONFIG['img_frequency']}_chip{CONFIG['chip_size']}_t{T}_K{CONFIG['prediction_horizon']}",
         config={
             "learning_rate": CONFIG["learning_rate"],
             "architecture": CONFIG["architecture"],
@@ -377,7 +378,7 @@ def main():
             "val_ratio": CONFIG["val_ratio"],
             "test_ratio": CONFIG["test_ratio"],
             "end_years_masking": True,
-            "num_tiles_with_end_year": len(end_years),
+            # "num_tiles_with_end_year": len(end_years),
             "prediction_horizon": CONFIG["prediction_horizon"],
             "loss": "weighted_cross_entropy",
             "positive_class_weight": class_weights[1].item(),
