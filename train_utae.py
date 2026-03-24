@@ -57,7 +57,6 @@ CONFIG = {
     "num_classes": 2,
     
     # Data
-    "temporal_mode": None,          # None = use all 14 timesteps
     "img_frequency": None,
     "chip_size": 64,
     "prediction_horizon": 2,        # K: zero timesteps from (endYear - K) onwards per tile
@@ -186,7 +185,6 @@ def main():
     
     temp_train_ds = SentinelDataset(
         train_ref_ids,
-        # slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=temp_train_transform,
     )
@@ -234,7 +232,6 @@ def main():
     
     train_ds = SentinelDataset(
         train_ref_ids,
-        # slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=train_transform,
         prediction_horizon=CONFIG["prediction_horizon"],
@@ -242,14 +239,12 @@ def main():
 
     val_ds = SentinelDataset(
         val_ref_ids,
-        # slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=val_transform,
         prediction_horizon=CONFIG["prediction_horizon"],
     )
     test_ds = SentinelDataset(
         test_ref_ids,
-        # slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=test_transform,
         prediction_horizon=CONFIG["prediction_horizon"],
@@ -360,7 +355,6 @@ def main():
             "chip_size": CONFIG["chip_size"],
             "augment_train": CONFIG["augment_train"],
             "augmentation": "flips_rotations" if CONFIG["augment_train"] else "none",
-            "temporal_mode": CONFIG["temporal_mode"],
             "num_timesteps": T,
             "train_chips": len(train_ds),
             "val_chips": len(val_ds),
@@ -370,7 +364,6 @@ def main():
             "train_ratio": CONFIG["train_ratio"],
             "val_ratio": CONFIG["val_ratio"],
             "test_ratio": CONFIG["test_ratio"],
-            "end_years_masking": True,
             "prediction_horizon": CONFIG["prediction_horizon"],
             "loss": "weighted_cross_entropy",
             "positive_class_weight": class_weights[1].item(),
