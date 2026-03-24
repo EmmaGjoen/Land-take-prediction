@@ -47,29 +47,21 @@ class SentinelDataset(Dataset):
         self,
         ids,
         transform,
-        slice_mode: str = None,
         frequency: str | int | None = None,
         max_timesteps: int | None = None,
         prediction_horizon: int = 2,
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
-        slice_mode: None or "first_half", or a specific year (as int): 2019, 2020, 2021, 2022, 2023
         transform: Transform to apply (flips, rotations, normalization)
         frequency: two quarters a year as default, optional: annual
-        end_years: mapping of refid -> endYear from annotations metadata.
-            Sentinel timesteps after endYear are zeroed AFTER normalization,
-            so U-TAE's pad_value=0.0 detection masks them correctly.
         max_timesteps: If set, pad or truncate the time axis to this length.
             Leave as None when all tiles share the same T.
         prediction_horizon: Number of years before endYear to cut off.
             With K=2, the model only sees data up to endYear-2, forcing it to
             predict land take K years in advance (per tile, using each tile's endYear).
         """
-        # Load per-tile endYear metadata. Sentinel tiles after endYear will be zeroed
-        # AFTER normalization so U-TAE's pad_value=0.0 masks them from attention.
 
-        self.slice_mode = slice_mode
         self.transform = transform
         self.frequency = frequency
         self.max_timesteps = max_timesteps
@@ -122,20 +114,9 @@ class SentinelDataset(Dataset):
         with rasterio.open(mask_path) as src_m:
             mask = src_m.read(1)  # (H, W)
 
-        # Warn if Sentinel and mask have different spatial dimensions (data quality check)
+        # Warn if Sentinel and mask have different spatial dimensions
         if img.shape[-2:] != mask.shape:
-            print(
-                f"[WARN] spatial mismatch for {fid}: "
-                f"Sentinel {img.shape[-2:]} vs mask {mask.shape}"
-            )
-
-        # reshape to (T, C, H, W)
-        # (old data:) Expected layout: 126 = 7 years * 2 quarters * 9 bands
-        # C = 9
-        # num_bands, H, W = img.shape
-        # T = num_bands // C
-        # num_quarters = 2
-        # num_years = T // num_quarters
+            print(f"[WARN] spatial mismatch for {fid}: Sentinel {img.shape[-2:]} vs mask {mask.shape}")
 
         C = 9
         num_quarters = 2
@@ -147,70 +128,69 @@ class SentinelDataset(Dataset):
             # raise ValueError(
             #     f"Expected number of years to be {meta.end_year - meta.start_year +1}, got {num_years} for {fid} at {img_path}"
             # )
-            print(
-                f"[WARN] {fid}: expected {T * C} bands but .tif has {num_bands} — using file band count"
-            )
+            print(f"[WARN] {fid}: expected {T * C} bands but .tif has {num_bands} — using file band count")
             num_years = num_bands // (C * num_quarters)
         
+        # reshape (num_bands, H, W ) to (num_years, num_quarters, C, H, W)
         img = img.reshape(num_years, num_quarters, C, H, W)
 
-        if self.slice_mode in ALL_YEARS:
-            end_idx = ALL_YEARS.index(int(self.slice_mode))
-            img = img[0: end_idx +1]
+
+
+        file_years = list(range(meta.start_year, meta.start_year + num_years)) 
+        valid_years = [y for y in file_years if y in ALL_YEARS]     # Clip to only years within ALL_YEARS
+        start_clip = valid_years[0] - meta.start_year
+        end_clip   = valid_years[-1] - meta.start_year
+
+        # Slice img along the year axis
+        img = img[start_clip : end_clip + 1]   # shape: (num_valid_years, num_quarters, C, H, W)
+        file_years = valid_years               # update to reflect clipped range
+
 
         if self.frequency == "annual":
             if T % num_quarters != 0:
                 raise ValueError(
-                    f"Timesteps ({T}) not divisible by steps_per_year ({num_quarters}) for {fid} at {img_path}"
+                    f"Timesteps ({T}) not divisible by ({num_quarters}) quarters per year for {fid} at {img_path}"
                 )
-            img = img.mean(axis=1)  # aggregate quarters -> (num_years, C, H, W)
+            # aggregate quarters -> (num_years, C, H, W)
+            img = img.mean(axis=1)  
         else:
-            new_T = img.shape[0] * img.shape[1]
-            img = img.reshape(new_T, C, H, W)
+            # merge quarters and years to timesteps -> (T, C, H, W)
+            img = img.reshape(-1, C, H, W)
 
-        # optionally take first half of the time series
-        if self.slice_mode == "first_half":
-            img = img[: img.shape[0] // 2]
-
-        # Compute positions encoding absolute temporal location.
-        # All Sentinel tiles start at 2018; we encode relative to base year 2016
-        # so positions are non-zero (avoids collision with pad position=0).
-        # Annual:    2018=2, 2019=3, ..., 2024=8
-        # Quarterly: 2018Q1=4, 2018Q2=5, 2019Q1=6, ..., 2024Q2=17
         current_T = img.shape[0]
-        BASE_YEAR = 2016
-        START_YEAR = 2018
+
+        # Position encoding: encode each timestep's absolute temporal position.
+        # Positions are 1-indexed so that 0 is always available to mark padding.
+        # U-TAE masks out any timestep with position=0 from attention.
+
         if self.frequency == "annual":
-            start_pos = START_YEAR - BASE_YEAR          # 2
+            start_pos = file_years[0] - ALL_YEARS[0] + 1    # e.g. 2016 → 1, 2018 → 3
         else:
-            start_pos = (START_YEAR - BASE_YEAR) * 2   # 4
+            start_pos = (file_years[0] - ALL_YEARS[0] + 1) * 2      # e.g. 2016 → 2, 2018 → 6
+
         positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
 
         # to torch tensors
-        img = torch.from_numpy(img).float()     # (T, C, H, W)
+        img = torch.from_numpy(img).float()     # (num_years, C, H, W) or (T, C, H, W)
         mask = torch.from_numpy(mask).long()    # (H, W)
         mask = (mask > 0).long()
 
-        # Apply transforms (which handle padding/cropping via CenterCropTS)
+        # Apply transforms (normalization + augmentation) BEFORE any zero-padding, 
+        # so that padding zeros do not affect normalization statistics.
         if self.transform is not None:
             img, mask = self.transform(img, mask)
 
-        # Apply prediction_horizon masking AFTER normalization so masked timesteps are
-        # exactly 0.0 — the value U-TAE's pad_value detection compares against.
-        # With prediction_horizon=K, the model only sees data up to (endYear - K),
-        # forcing it to predict land take K years in advance (per tile).
-        cutoff_year = meta.end_year - self.prediction_horizon
-        assert cutoff_year in ALL_YEARS, (
-            f"cutoff_year {cutoff_year} not in YEARS for {fid} — "
-            f"should have been filtered out in __init__"
-        )
-        if self.frequency == "annual":
-            n_valid = min(ALL_YEARS.index(cutoff_year) + 1, current_T)
-        else:
-            n_valid = min((ALL_YEARS.index(cutoff_year) + 1) * 2, current_T)
 
-        img[n_valid:] = 0.0
-        positions[n_valid:] = 0
+
+        # Zero out timesteps after cutoff year (endYear - K) so U-TAE ignores them.
+        # The model only sees data up to the cutoff, forcing it to predict K years ahead.
+        cutoff_year = meta.end_year - self.prediction_horizon
+        cutoff_idx  = file_years.index(cutoff_year)
+        steps_per_year = 1 if self.frequency == "annual" else num_quarters
+        n_visible_timesteps = min((cutoff_idx + 1) * steps_per_year, current_T)
+
+        img[n_visible_timesteps:]       = 0.0
+        positions[n_visible_timesteps:] = 0
 
         # Pad or truncate to max_timesteps if set (needed when T varies per tile).
         # Padding is zeros so U-TAE treats them as masked timesteps automatically.
