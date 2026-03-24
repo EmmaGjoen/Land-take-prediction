@@ -61,3 +61,5 @@ def load_all_years() -> list[int]:
     return list(range(min_year, max_year + 1))
 
 ALL_YEARS: list[int] = load_all_years()
+ACQUISITIONS_PER_YEAR = 2
+MAX_TIMESTEPS = len(ALL_YEARS) * ACQUISITIONS_PER_YEAR

@@ -8,19 +8,21 @@ from src.config import (
     SENTINEL_DIR,
     MASK_DIR,
     ALL_YEARS,
+    MAX_TIMESTEPS,
+    ACQUISITIONS_PER_YEAR,
     load_metadata
 )
 
 
 def find_file_by_prefix(base_dir: Path, fid: str) -> Path:
     """
-    Find a file in base_dir whose name starts with fid and ends with .tif or .tiff.
+    Find the unique .tif file in base_dir whose name starts with fid.
 
     Example:
-        fid = "a22-0323..._37-98..."
-        file = "a22-0323..._37-98..._RGBNIRRSWIRQ_Mosaic.tif"
+        fid  = "a-0-84261876000576_52-28383748670937"
+        file = "a-0-84261876000576_52-28383748670937_RGBNIRRSWIRQ_Mosaic.tif"
 
-    This assumes there is exactly one such file per fid.
+    Raises FileNotFoundError if no match, RuntimeError if multiple matches.
     """
     candidates = sorted(
         list(base_dir.glob(f"{fid}*.tif"))
@@ -35,12 +37,11 @@ def find_file_by_prefix(base_dir: Path, fid: str) -> Path:
 class SentinelDataset(Dataset):
     DATASET_NAME = "sentinel"
     """
-    Loads time series data and reshapes it into (T, C, H, W)
-    so it can be fed directly to temporal models (like the FCEF baseline).
+    Loads Sentinel-2 time series data and reshapes it into (T, C, H, W)
+    so it can be fed directly to temporal models (like U-TAE).
 
-    Assumptions:
-      - `ids` are REFIDs that match the *prefix* of the filenames in
-        SENTINEL_DIR / MASK_DIR.
+    Each REFID maps to a .tif file whose name starts with that REFID,
+    found in SENTINEL_DIR and MASK_DIR respectively.
     """
 
     def __init__(
@@ -48,23 +49,19 @@ class SentinelDataset(Dataset):
         ids,
         transform,
         frequency: str | int | None = None,
-        max_timesteps: int | None = None,
         prediction_horizon: int = 2,
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
         transform: Transform to apply (flips, rotations, normalization)
         frequency: two quarters a year as default, optional: annual
-        max_timesteps: If set, pad or truncate the time axis to this length.
-            Leave as None when all tiles share the same T.
-        prediction_horizon: Number of years before endYear to cut off.
-            With K=2, the model only sees data up to endYear-2, forcing it to
-            predict land take K years in advance (per tile, using each tile's endYear).
+        prediction_horizon: Number of years before final year in timeseries to cut off.
+            With K=2, the model only sees data up to final year-2, forcing it to
+            predict land take K years in advance.
         """
 
         self.transform = transform
         self.frequency = frequency
-        self.max_timesteps = max_timesteps
         self.prediction_horizon = prediction_horizon
         self.metadata = load_metadata()
 
@@ -119,7 +116,7 @@ class SentinelDataset(Dataset):
             print(f"[WARN] spatial mismatch for {fid}: Sentinel {img.shape[-2:]} vs mask {mask.shape}")
 
         C = 9
-        num_quarters = 2
+        num_quarters = ACQUISITIONS_PER_YEAR
         num_bands, H, W = img.shape
         num_years = meta.end_year - meta.start_year + 1 # e.g. 2018-2025 = 8 years
         T = num_years * num_quarters  # e.g. 7 * 2 = 14
@@ -175,12 +172,10 @@ class SentinelDataset(Dataset):
         mask = torch.from_numpy(mask).long()    # (H, W)
         mask = (mask > 0).long()
 
-        # Apply transforms (normalization + augmentation) BEFORE any zero-padding, 
+        # Apply transforms (normalization + augmentation) before any zero-padding, 
         # so that padding zeros do not affect normalization statistics.
         if self.transform is not None:
             img, mask = self.transform(img, mask)
-
-
 
         # Zero out timesteps after cutoff year (endYear - K) so U-TAE ignores them.
         # The model only sees data up to the cutoff, forcing it to predict K years ahead.
@@ -192,15 +187,14 @@ class SentinelDataset(Dataset):
         img[n_visible_timesteps:]       = 0.0
         positions[n_visible_timesteps:] = 0
 
-        # Pad or truncate to max_timesteps if set (needed when T varies per tile).
-        # Padding is zeros so U-TAE treats them as masked timesteps automatically.
-        if self.max_timesteps is not None:
-            if current_T < self.max_timesteps:
-                pad_len = self.max_timesteps - current_T
-                img = F.pad(img, (0, 0, 0, 0, 0, 0, 0, pad_len))
-                positions = F.pad(positions, (0, pad_len))
-            elif current_T > self.max_timesteps:
-                img = img[:self.max_timesteps]
-                positions = positions[:self.max_timesteps]
+        # Pad or truncate to max_timesteps
+        # Padding is zeros so U-TAE treats them as masked timesteps
+        if current_T < MAX_TIMESTEPS:
+            pad_len = MAX_TIMESTEPS - current_T
+            img = F.pad(img, (0, 0, 0, 0, 0, 0, 0, pad_len))
+            positions = F.pad(positions, (0, pad_len))
+        elif current_T > MAX_TIMESTEPS:
+            img = img[:MAX_TIMESTEPS]
+            positions = positions[:MAX_TIMESTEPS]
 
         return img, mask, positions
