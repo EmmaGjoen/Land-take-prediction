@@ -61,8 +61,3 @@ def load_all_years() -> list[int]:
     return list(range(min_year, max_year + 1))
 
 ALL_YEARS: list[int] = load_all_years()
-YEARS: list[int] = ALL_YEARS
-
-# ---------- backwards-compat shims (remove once callers are updated) ----------
-def load_end_years()   -> dict[str, int]: return {r: m.end_year   for r, m in load_metadata().items()}
-def load_start_years() -> dict[str, int]: return {r: m.start_year for r, m in load_metadata().items()}

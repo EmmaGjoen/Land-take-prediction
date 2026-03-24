@@ -131,21 +131,27 @@ class SentinelDataset(Dataset):
 
         # reshape to (T, C, H, W)
         # (old data:) Expected layout: 126 = 7 years * 2 quarters * 9 bands
-        C = 9
-        num_bands, H, W = img.shape
-        T = num_bands // C
-        num_quarters = 2
-        num_years = T // num_quarters
+        # C = 9
+        # num_bands, H, W = img.shape
+        # T = num_bands // C
+        # num_quarters = 2
+        # num_years = T // num_quarters
 
-        # if num_years != meta.end_year - meta.start_year +1:
-        #     raise ValueError(
-        #         f"Expected number of years to be {meta.end_year - meta.start_year +1}, got {num_years} for {fid} at {img_path}"
-        #     )
-        
-        if num_bands != num_years *num_quarters * C:
-            raise ValueError(
-                f"Expected bands to be divisible by {num_quarters * C}, got {num_bands} for {fid} at {img_path}"
+        C = 9
+        num_quarters = 2
+        num_bands, H, W = img.shape
+        num_years = meta.end_year - meta.start_year + 1 # e.g. 2018-2025 = 8 years
+        T = num_years * num_quarters  # e.g. 7 * 2 = 14
+
+        if num_bands != T * C:
+            # raise ValueError(
+            #     f"Expected number of years to be {meta.end_year - meta.start_year +1}, got {num_years} for {fid} at {img_path}"
+            # )
+            print(
+                f"[WARN] {fid}: expected {T * C} bands but .tif has {num_bands} — using file band count"
             )
+            num_years = num_bands // (C * num_quarters)
+        
         img = img.reshape(num_years, num_quarters, C, H, W)
 
         if self.slice_mode in ALL_YEARS:
