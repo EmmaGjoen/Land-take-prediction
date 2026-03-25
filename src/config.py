@@ -11,7 +11,6 @@ VHR_DIR         = DATA_ROOT / "vhr"
 PLANETSCOPE_DIR = DATA_ROOT / "PlanetScope"
 ALPHAEARTH_DIR  = DATA_ROOT / "AlphaEarth"
 METADATA_PATH   = DATA_ROOT / "annotations_metadata_final.csv"
-
 TESSERA_DIR = ROOT / "data" / "processed" / "tessera" / "snapped_to_mask_grid"
 REPORTS_DIR = ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
@@ -23,7 +22,6 @@ EPOCHS     = 10
 
 for d in [REPORTS_DIR, FIGURES_DIR]:
     d.mkdir(parents=True, exist_ok=True)
-
 
 @dataclass(frozen=True)
 class TileMetadata:
