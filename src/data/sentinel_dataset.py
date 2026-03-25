@@ -118,25 +118,31 @@ class SentinelDataset(Dataset):
         C = 9
         num_quarters = ACQUISITIONS_PER_YEAR
         num_bands, H, W = img.shape
-        num_years = meta.end_year - meta.start_year + 1 # e.g. 2018-2025 = 8 years
+        num_years = num_bands // (C * num_quarters) # e.g. 126 // (9*2) = 7
+        # num_years = meta.end_year - meta.start_year + 1 # e.g. 2018-2025 = 8 years
         T = num_years * num_quarters  # e.g. 7 * 2 = 14
 
-        if num_bands != T * C:
-            # raise ValueError(
-            #     f"Expected number of years to be {meta.end_year - meta.start_year +1}, got {num_years} for {fid} at {img_path}"
-            # )
-            print(f"[WARN] {fid}: expected {T * C} bands but .tif has {num_bands} — using file band count")
-            num_years = num_bands // (C * num_quarters)
+        # if num_bands != T * C:
+        #     # raise ValueError(
+        #     #     f"Expected number of years to be {meta.end_year - meta.start_year +1}, got {num_years} for {fid} at {img_path}"
+        #     # )
+        #     print(f"[WARN] {fid}: expected {T * C} bands but .tif has {num_bands} — using file band count")
+        #     num_years = num_bands // (C * num_quarters)
         
         # reshape (num_bands, H, W ) to (num_years, num_quarters, C, H, W)
         img = img.reshape(num_years, num_quarters, C, H, W)
 
 
 
-        file_years = list(range(meta.start_year, meta.start_year + num_years)) 
-        valid_years = [y for y in file_years if y in ALL_YEARS]     # Clip to only years within ALL_YEARS
-        start_clip = valid_years[0] - meta.start_year
-        end_clip   = valid_years[-1] - meta.start_year
+        # file_years = list(range(meta.start_year, meta.start_year + num_years)) 
+        file_years = list(range(ALL_YEARS[0], ALL_YEARS[0] + num_years))  # always [2016, 2017, ..., 2024]
+        # valid_years = [y for y in file_years if y in ALL_YEARS]     # Clip to only years within ALL_YEARS
+        valid_years = [y for y in file_years if meta.start_year <= y <= meta.end_year]
+        # start_clip = valid_years[0] - meta.start_year
+        # end_clip   = valid_years[-1] - meta.start_year
+
+        start_clip = valid_years[0] - ALL_YEARS[0]
+        end_clip   = valid_years[-1] - ALL_YEARS[0]
 
         # Slice img along the year axis
         img = img[start_clip : end_clip + 1]   # shape: (num_valid_years, num_quarters, C, H, W)
@@ -144,10 +150,10 @@ class SentinelDataset(Dataset):
 
 
         if self.frequency == "annual":
-            if T % num_quarters != 0:
-                raise ValueError(
-                    f"Timesteps ({T}) not divisible by ({num_quarters}) quarters per year for {fid} at {img_path}"
-                )
+            # if T % num_quarters != 0:
+            #     raise ValueError(
+            #         f"Timesteps ({T}) not divisible by ({num_quarters}) quarters per year for {fid} at {img_path}"
+            #     )
             # aggregate quarters -> (num_years, C, H, W)
             img = img.mean(axis=1)  
         else:
@@ -180,9 +186,13 @@ class SentinelDataset(Dataset):
         # Zero out timesteps after cutoff year (endYear - K) so U-TAE ignores them.
         # The model only sees data up to the cutoff, forcing it to predict K years ahead.
         cutoff_year = meta.end_year - self.prediction_horizon
-        cutoff_idx  = file_years.index(cutoff_year)
-        steps_per_year = 1 if self.frequency == "annual" else num_quarters
-        n_visible_timesteps = min((cutoff_idx + 1) * steps_per_year, current_T)
+        if cutoff_year not in file_years:
+            n_visible_timesteps = current_T
+            print(f"[WARN] {fid}: cutoff_year {cutoff_year} is not in file_years {file_years}")
+        else:
+            cutoff_idx  = file_years.index(cutoff_year)
+            steps_per_year = 1 if self.frequency == "annual" else num_quarters
+            n_visible_timesteps = min((cutoff_idx + 1) * steps_per_year, current_T)
 
         img[n_visible_timesteps:]       = 0.0
         positions[n_visible_timesteps:] = 0

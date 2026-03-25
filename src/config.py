@@ -5,7 +5,7 @@ from dataclasses import dataclass
 ROOT = Path(__file__).resolve().parents[1]
 
 DATA_ROOT       = ROOT / "data" / "raw"
-SENTINEL_DIR    = DATA_ROOT / "Sentinel"
+SENTINEL_DIR    = DATA_ROOT / "Sentinel_v2"
 MASK_DIR        = DATA_ROOT / "Land_take_masks_coarse"
 VHR_DIR         = DATA_ROOT / "vhr"
 PLANETSCOPE_DIR = DATA_ROOT / "PlanetScope"
