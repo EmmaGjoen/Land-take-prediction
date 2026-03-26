@@ -1,3 +1,7 @@
+import os
+
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
 import sys
 import argparse
 import random
@@ -14,7 +18,8 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import SENTINEL_DIR, MASK_DIR, load_end_years, load_start_years
+from src.config import SENTINEL_DIR, MASK_DIR
+import rasterio
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
@@ -51,7 +56,6 @@ CONFIG = {
     "num_classes": 2,
     
     # Data
-    "temporal_mode": None,          # None = use all timesteps
     "img_frequency": None,
     "chip_size": 64,
     "prediction_horizon": 2,        # K: zero timesteps from (endYear - K) onwards per tile
@@ -121,6 +125,7 @@ def main():
         print(f"input_years overridden via CLI: N={CONFIG['input_years']}")
 
     # Set random seeds
+    torch.use_deterministic_algorithms(True, warn_only=True)
     set_random_seeds(CONFIG["random_seed"])
     
     # Get device
@@ -149,12 +154,6 @@ def main():
     print(f"Test tiles: {len(test_ref_ids)} (~{100*len(test_ref_ids)/len(all_ref_ids):.0f}%)")
     print(f"✓ Using SHARED splits with U-Net baseline (random_state={CONFIG['random_seed']})")
 
-    # Load per-tile endYear metadata. Sentinel tiles after endYear will be zeroed
-    # AFTER normalization so U-TAE's pad_value=0.0 masks them from attention.
-    end_years = load_end_years()
-    print(f"✓ Loaded endYear metadata for {len(end_years)} tiles")
-    start_years = load_start_years()
-    print(f"✓ Loaded startYear metadata for {len(start_years)} tiles")
     
     # Compute normalization stats
     print("\n" + "="*80)
@@ -167,9 +166,9 @@ def main():
     
     temp_train_ds = SentinelDataset(
         train_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=temp_train_transform,
+        calibrate_mode=True
     )
     
     print("Estimating per-channel mean and std from training data...")
@@ -215,32 +214,23 @@ def main():
     
     train_ds = SentinelDataset(
         train_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=train_transform,
-        end_years=end_years,
-        start_years=start_years,
         prediction_horizon=CONFIG["prediction_horizon"],
         input_years=CONFIG["input_years"],
     )
 
     val_ds = SentinelDataset(
         val_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=val_transform,
-        end_years=end_years,
-        start_years=start_years,
         prediction_horizon=CONFIG["prediction_horizon"],
         input_years=CONFIG["input_years"],
     )
     test_ds = SentinelDataset(
         test_ref_ids,
-        slice_mode=CONFIG["temporal_mode"],
         frequency=CONFIG["img_frequency"],
         transform=test_transform,
-        end_years=end_years,
-        start_years=start_years,
         prediction_horizon=CONFIG["prediction_horizon"],
         input_years=CONFIG["input_years"],
     )
@@ -270,12 +260,16 @@ def main():
         batch_size=CONFIG["batch_size"],
         shuffle=False,
         num_workers=CONFIG["num_workers"],
+        worker_init_fn=worker_init_fn,
+        generator=torch.Generator().manual_seed(CONFIG["random_seed"])
     )
     test_loader = DataLoader(
         test_ds,
         batch_size=CONFIG["batch_size"],
         shuffle=False,
         num_workers=CONFIG["num_workers"],
+        worker_init_fn=worker_init_fn,
+        generator=torch.Generator().manual_seed(CONFIG["random_seed"])
     )
     
     print(f"✓ Dataloaders created with reproducible shuffling (seed={CONFIG['random_seed']})")
@@ -334,9 +328,26 @@ def main():
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"UTAE_K{CONFIG['prediction_horizon']}_N{n_label}",
+        name=f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}_freq:{CONFIG['img_frequency']}",
         config={
             "architecture": CONFIG["architecture"],
+            "dataset": train_ds.DATASET_NAME,
+            "epochs": CONFIG["epochs"],
+            "batch_size": CONFIG["batch_size"],
+            "chip_size": CONFIG["chip_size"],
+            "augment_train": CONFIG["augment_train"],
+            "augmentation": "flips_rotations" if CONFIG["augment_train"] else "none",
+            "num_timesteps": T,
+            "train_chips": len(train_ds),
+            "val_chips": len(val_ds),
+            "test_chips": len(test_ds),
+            "normalization": CONFIG["normalization"],
+            "random_seed": CONFIG["random_seed"],
+            "train_ratio": CONFIG["train_ratio"],
+            "val_ratio": CONFIG["val_ratio"],
+            "test_ratio": CONFIG["test_ratio"],
+            "prediction_horizon": CONFIG["prediction_horizon"],
+            "loss": "weighted_cross_entropy",
             "prediction_horizon_K": CONFIG["prediction_horizon"],
             "input_years_N": CONFIG["input_years"],
             "num_timesteps": T,

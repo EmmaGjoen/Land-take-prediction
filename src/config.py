@@ -1,61 +1,58 @@
 from pathlib import Path
 import csv
+from dataclasses import dataclass
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Data folders on IDUN
-DATA_ROOT = ROOT / "data" / "raw"
-
-SENTINEL_DIR    = DATA_ROOT / "Sentinel"
+DATA_ROOT       = ROOT / "data" / "raw"
+SENTINEL_DIR    = DATA_ROOT / "Sentinel_v2"
 MASK_DIR        = DATA_ROOT / "Land_take_masks_coarse"
 VHR_DIR         = DATA_ROOT / "VHR_google"
 PLANETSCOPE_DIR = DATA_ROOT / "PlanetScope"
 ALPHAEARTH_DIR  = DATA_ROOT / "AlphaEarth"
-
-METADATA_PATH = DATA_ROOT / "annotations_metadata_final.csv"
-
-
-def load_end_years() -> dict[str, int]:
-    """Return {refid: endYear} for all tiles with valid metadata.
-
-    Tiles with NA endYear (two known bad entries) are silently skipped.
-    """
-    end_years: dict[str, int] = {}
-    with open(METADATA_PATH, newline="") as f:
-        for row in csv.DictReader(f):
-            if row["endYear"] != "NA":
-                end_years[row["REFID"]] = int(row["endYear"])
-    return end_years
-
-
-def load_start_years() -> dict[str, int]:
-    """Return {refid: startYear} for all tiles with valid metadata.
-
-    Tiles with NA startYear are silently skipped.
-    """
-    start_years: dict[str, int] = {}
-    with open(METADATA_PATH, newline="") as f:
-        for row in csv.DictReader(f):
-            if row["startYear"] != "NA":
-                start_years[row["REFID"]] = int(row["startYear"])
-    return start_years
-
-# Tessera embeddings (snapped to mask grid)
+METADATA_PATH   = DATA_ROOT / "annotations_metadata_final.csv"
 TESSERA_DIR = ROOT / "data" / "processed" / "tessera" / "snapped_to_mask_grid"
-
-# Output / reports
 REPORTS_DIR = ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
-# Training defaults
 PATCH_SIZE = 256
 BATCH_SIZE = 8
-LR = 1e-3
-EPOCHS = 10
+LR         = 1e-3
+EPOCHS     = 10
 
-# Create folders if missing 
 for d in [REPORTS_DIR, FIGURES_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
-# Chronological mapping of years present in the Sentinel time-series (ordered)
-YEARS = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+@dataclass(frozen=True)
+class TileMetadata:
+    refid:      str
+    start_year: int   # year of first VHR image → first valid Sentinel year
+    end_year:   int   # year of second VHR image → last valid Sentinel year
+
+
+def load_metadata(skip_na: bool = True) -> dict[str, TileMetadata]:
+    """
+    Return {refid: TileMetadata} for all tiles.
+
+    Parameters
+    ----------
+    skip_na : if True, rows where startYear or endYear is 'NA' are silently dropped.
+    """
+    meta: dict[str, TileMetadata] = {}
+    with open(METADATA_PATH, newline="") as f:
+        for row in csv.DictReader(f):
+            sy, ey = row["startYear"], row["endYear"]
+            if skip_na and (sy == "NA" or ey == "NA"):
+                continue
+            meta[row["REFID"]] = TileMetadata(
+                refid=row["REFID"],
+                start_year=int(sy),
+                end_year=int(ey),
+            )
+    return meta
+
+SENTINEL_START_YEAR = 2016
+SENTINEL_END_YEAR   = 2024
+ALL_YEARS = list(range(SENTINEL_START_YEAR, SENTINEL_END_YEAR + 1))
+ACQUISITIONS_PER_YEAR = 2
+MAX_TIMESTEPS = len(ALL_YEARS) * ACQUISITIONS_PER_YEAR

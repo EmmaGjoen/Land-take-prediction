@@ -1,10 +1,3 @@
-"""
-Shared data transformation utilities for fair model comparison.
-
-This module provides consistent normalization and augmentation transforms
-for both U-Net and FCEF baselines, ensuring identical preprocessing.
-"""
-
 import torch
 import torch.nn.functional as F
 import random

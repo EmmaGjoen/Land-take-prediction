@@ -7,7 +7,10 @@ from torch.utils.data import Dataset
 from src.config import (
     SENTINEL_DIR,
     MASK_DIR,
-    YEARS
+    ALL_YEARS,
+    MAX_TIMESTEPS,
+    ACQUISITIONS_PER_YEAR,
+    load_metadata
 )
 
 
@@ -28,78 +31,53 @@ class SentinelDataset(Dataset):
         self,
         ids,
         transform,
-        slice_mode: str = None,
         frequency: str | int | None = None,
-        end_years: dict[str, int] | None = None,
-        start_years: dict[str, int] | None = None,
-        max_timesteps: int | None = None,
         prediction_horizon: int = 2,
         input_years: int | None = None,
+        calibrate_mode: bool = False,
     ):
         """
-        ids: list of REFIDs
-        transform: normalization + augmentation
-        slice_mode: None, "first_half", or a specific year to slice up to
-        frequency: None (quarterly, default) or "annual"
-        end_years: {refid: changeYear} — timesteps after changeYear are zeroed
-        start_years: {refid: startYear} — used as per-tile reference year anchor
-        max_timesteps: pad/truncate time axis to this length for batching
-        prediction_horizon (K): model sees data up to changeYear-K
+        ids: list of REFIDs (filename stems without the long suffix)
+        transform: Transform to apply (flips, rotations, normalization)
+        frequency: two quarters a year as default, optional: annual
+        prediction_horizon (K): Number of years before final year in timeseries to cut off.
+            With K=2, the model only sees data up to final year-2, forcing it to
+            predict land take K years in advance.
         input_years (N): reference year + latest N-1 years before cutoff;
-            None means all available years
+            None means all available years except the ones masked by the prediction  horizon
         """
-        self.slice_mode = slice_mode
+
         self.transform = transform
         self.frequency = frequency
-        self.end_years = end_years
-        self.start_years = start_years
-        self.max_timesteps = max_timesteps
         self.prediction_horizon = prediction_horizon
         self.input_years = input_years
+        self.calibrate_mode = calibrate_mode
+        self.metadata = load_metadata()
 
-        # Drop tiles whose cutoff year falls outside YEARS
-        if end_years is not None and prediction_horizon > 0:
-            filtered, dropped = [], []
-            for fid in ids:
-                ey = end_years.get(fid)
-                if ey is not None and (ey - prediction_horizon) not in YEARS:
-                    dropped.append(fid)
-                else:
-                    filtered.append(fid)
-            if dropped:
-                print(
-                    f"[SentinelDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s) "
-                    f"whose cutoff year falls outside YEARS. {len(filtered)} tiles remain."
-                )
-            self.ids = filtered
-        else:
-            self.ids = list(ids)
+        # Drop tiles whose cutoff year falls outside the available Sentinel record.
+        # Example: endYear=2022 with K=5 → cutoff=2017, which is before our data starts.
+        filtered, dropped = [], []
+        for fid in ids:
+            meta = self.metadata.get(fid)
+            if meta is None:
+                dropped.append(fid)
+                print(f"No metadata is found for {fid}. Check your metadata CSV.")
+                continue
+            if self.calibrate_mode:
+                filtered.append(fid)
+                continue
 
-        # Drop tiles with fewer than N years between reference year and cutoff
-        if input_years is not None and end_years is not None:
-            filtered, dropped = [], []
-            for fid in self.ids:
-                ey = end_years.get(fid)
-                if ey is None:
-                    filtered.append(fid)
-                    continue
-                cutoff_year = ey - prediction_horizon
-                if cutoff_year not in YEARS:
-                    filtered.append(fid)
-                    continue
-                tile_start = start_years.get(fid, YEARS[0]) if start_years else YEARS[0]
-                anchor_year = max(tile_start, YEARS[0])
-                available_years = YEARS.index(cutoff_year) - YEARS.index(anchor_year) + 1
-                if available_years < input_years:
-                    dropped.append(fid)
-                else:
-                    filtered.append(fid)
-            if dropped:
-                print(
-                    f"[SentinelDataset] N={input_years}: excluded {len(dropped)} tile(s) "
-                    f"with fewer than {input_years} available years. {len(filtered)} tiles remain."
-                )
-            self.ids = filtered
+            cutoff_year = meta.end_year - prediction_horizon
+            if cutoff_year in ALL_YEARS:
+                filtered.append(fid)
+            else:
+                dropped.append(fid)
+        if dropped:
+            print(
+                f"[SentinelDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s), whose cutoff year falls outside available data. "
+                f"{len(filtered)} tiles remain."
+            )
+        self.ids = filtered
 
         # Pre-resolve paths
         self.img_paths: dict[str, Path] = {}
@@ -113,88 +91,117 @@ class SentinelDataset(Dataset):
 
     def __getitem__(self, idx):
         fid = self.ids[idx]
+        meta = self.metadata[fid]
 
+        # read arrays
         with rasterio.open(self.img_paths[fid]) as src:
             img = src.read()  # (bands, H, W)
         with rasterio.open(self.mask_paths[fid]) as src_m:
             mask = src_m.read(1)  # (H, W)
 
+        # Warn if Sentinel and mask have different spatial dimensions
         if img.shape[-2:] != mask.shape:
             print(f"[WARN] spatial mismatch for {fid}: Sentinel {img.shape[-2:]} vs mask {mask.shape}")
 
-        # Reshape to (num_years, num_quarters, C, H, W)
         C = 9
+        num_quarters = ACQUISITIONS_PER_YEAR
         num_bands, H, W = img.shape
-        num_quarters = 2
-        num_years = num_bands // (num_quarters * C)
-        if num_bands != num_years * num_quarters * C:
-            raise ValueError(f"Band count {num_bands} not divisible by {num_quarters * C} for {fid}")
+        num_years = num_bands // (C * num_quarters) # e.g. 126 // (9*2) = 7
+        T = num_years * num_quarters  # e.g. 7 * 2 = 14
+
+        # reshape (num_bands, H, W ) to (num_years, num_quarters, C, H, W)
         img = img.reshape(num_years, num_quarters, C, H, W)
 
-        if self.slice_mode in YEARS:
-            end_idx = YEARS.index(int(self.slice_mode))
-            img = img[0: end_idx + 1]
+        file_years = list(range(ALL_YEARS[0], ALL_YEARS[0] + num_years))  # always [2016, 2017, ..., 2024]
+        valid_years = [y for y in file_years if meta.start_year <= y <= meta.end_year]
+        start_clip = valid_years[0] - ALL_YEARS[0]
+        end_clip   = valid_years[-1] - ALL_YEARS[0]
+
+        # Slice img along the year axis
+        img = img[start_clip : end_clip + 1]   # shape: (num_valid_years, num_quarters, C, H, W)
+        file_years = valid_years               # update to reflect clipped range
+
 
         if self.frequency == "annual":
-            img = img.mean(axis=1)  # (num_years, C, H, W)
+            img = img.mean(axis=1)  
         else:
-            img = img.reshape(img.shape[0] * img.shape[1], C, H, W)
+            # merge quarters and years to timesteps -> (T, C, H, W)
+            img = img.reshape(-1, C, H, W)
 
-        if self.slice_mode == "first_half":
-            img = img[: img.shape[0] // 2]
+        if self.calibrate_mode:
+            # Return raw tensor immediately so stats aren't corrupted by zeros from padding
+        
+            img = torch.from_numpy(img).float()
+            mask = torch.from_numpy(mask).long()
+            mask = (mask > 0).long()
+        
+            if self.transform is not None:
+                img, mask = self.transform(img, mask)
+            return img, mask, torch.zeros(1)
 
-        # Per-tile positions: encoded relative to BASE_YEAR=2015 so position 0
-        # is never assigned (kept free for U-TAE pad detection).
-        # Quarterly: 2016Q2=2 ... 2025Q3=21 | Annual: 2016=1 ... 2025=10
         current_T = img.shape[0]
-        BASE_YEAR = 2015
-        tile_start_year = self.start_years.get(fid, YEARS[0]) if self.start_years else YEARS[0]
-        tile_start_year = max(tile_start_year, YEARS[0])
-        start_pos = (tile_start_year - BASE_YEAR) * (1 if self.frequency == "annual" else 2)
+
+        # Position encoding: encode each timestep's absolute temporal position.
+        # Positions are 1-indexed so that 0 is always available to mark padding.
+        # U-TAE masks out any timestep with position=0 from attention.
+
+        if self.frequency == "annual":
+            start_pos = file_years[0] - ALL_YEARS[0] + 1    # e.g. 2016 → 1, 2018 → 3
+        else:
+            start_pos = (file_years[0] - ALL_YEARS[0] + 1) * 2      # e.g. 2016 → 2, 2018 → 6
+
         positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
 
-        img = torch.from_numpy(img).float()
-        mask = torch.from_numpy(mask).long()
+        # to torch tensors
+        img = torch.from_numpy(img).float()     # (num_years, C, H, W) or (T, C, H, W)
+        mask = torch.from_numpy(mask).long()    # (H, W)
         mask = (mask > 0).long()
 
+        # Apply transforms (normalization + augmentation) before any zero-padding, 
+        # so that padding zeros do not affect normalization statistics.
         if self.transform is not None:
             img, mask = self.transform(img, mask)
 
-        # Mask timesteps after the cutoff (changeYear - K) to zero so U-TAE
-        # ignores them via pad_value=0.0
-        if self.end_years is not None:
-            end_year = self.end_years.get(fid)
-            if end_year is not None:
-                cutoff_year = end_year - self.prediction_horizon
-                assert cutoff_year in YEARS, f"cutoff_year {cutoff_year} not in YEARS for {fid}"
-                steps_per_year = 1 if self.frequency == "annual" else 2
-                cutoff_year_idx = YEARS.index(cutoff_year)
-                n_valid = min((cutoff_year_idx + 1) * steps_per_year, current_T)
-                img[n_valid:] = 0.0
-                positions[n_valid:] = 0
+        # Zero out timesteps after cutoff year (endYear - K) so U-TAE ignores them.
+        # The model only sees data up to the cutoff, forcing it to predict K years ahead.
+        cutoff_year = meta.end_year - self.prediction_horizon
+        steps_per_year = 1 if self.frequency == "annual" else num_quarters
 
-                # Select reference year + latest N-1 years, zero the gap between them
-                if self.input_years is not None:
-                    tile_start = self.start_years.get(fid, YEARS[0]) if self.start_years else YEARS[0]
-                    anchor_year_idx = YEARS.index(max(tile_start, YEARS[0]))
-                    anchor_ts = anchor_year_idx * steps_per_year
-                    if anchor_ts > 0:
-                        img[:anchor_ts] = 0.0
-                        positions[:anchor_ts] = 0
-                    gap_start = (anchor_year_idx + 1) * steps_per_year
-                    gap_end = (cutoff_year_idx - (self.input_years - 2)) * steps_per_year
-                    if gap_start < gap_end:
-                        img[gap_start:gap_end] = 0.0
-                        positions[gap_start:gap_end] = 0
+        if cutoff_year not in file_years:
+            n_visible_timesteps = current_T
+            print(f"[WARN] {fid}: cutoff_year {cutoff_year} is not in file_years {file_years}")
+            cutoff_idx = len(file_years) - 1 # Fallback
+        else:
+            cutoff_idx  = file_years.index(cutoff_year)
+            n_visible_timesteps = min((cutoff_idx + 1) * steps_per_year, current_T)
 
-        # Pad or truncate to max_timesteps for batching
-        if self.max_timesteps is not None:
-            if current_T < self.max_timesteps:
-                pad_len = self.max_timesteps - current_T
-                img = F.pad(img, (0, 0, 0, 0, 0, 0, 0, pad_len))
-                positions = F.pad(positions, (0, pad_len))
-            elif current_T > self.max_timesteps:
-                img = img[:self.max_timesteps]
-                positions = positions[:self.max_timesteps]
+        # Aplly prediction horizon (K) masking
+        img[n_visible_timesteps:]       = 0.0
+        positions[n_visible_timesteps:] = 0
+
+        # Apply input years (N) masking 
+        if self.input_years is not None:
+            # N total years: the start_year, plus the (N-1) latest years ending at cutoff
+            window_limit = cutoff_year - (self.input_years - 1)
+            
+            # Iterate only through the years that survived the cutoff
+            for i, y in enumerate(file_years[:cutoff_idx + 1]):
+                # If the year is NOT the start_year AND falls before our N-1 window, mask it
+                if y != meta.start_year and y <= window_limit:
+                    t_start = i * steps_per_year
+                    t_end = t_start + steps_per_year
+
+                    img[t_start:t_end] = 0.0
+                    positions[t_start:t_end] = 0
+
+        # Pad or truncate to max_timesteps
+        # Padding is zeros so U-TAE treats them as masked timesteps
+        if current_T < MAX_TIMESTEPS:
+            pad_len = MAX_TIMESTEPS - current_T
+            img = F.pad(img, (0, 0, 0, 0, 0, 0, 0, pad_len))
+            positions = F.pad(positions, (0, pad_len))
+        elif current_T > MAX_TIMESTEPS:
+            img = img[:MAX_TIMESTEPS]
+            positions = positions[:MAX_TIMESTEPS]
 
         return img, mask, positions
