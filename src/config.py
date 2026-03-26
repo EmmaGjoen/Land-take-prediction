@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Data folders on IDUN
 DATA_ROOT = ROOT / "data" / "raw"
 
-SENTINEL_DIR    = DATA_ROOT / "Sentinel"
+SENTINEL_DIR    = DATA_ROOT / "Sentinel_v2"
 MASK_DIR        = DATA_ROOT / "Land_take_masks_coarse"
 VHR_DIR         = DATA_ROOT / "VHR_google"
 PLANETSCOPE_DIR = DATA_ROOT / "PlanetScope"
@@ -58,4 +58,4 @@ for d in [REPORTS_DIR, FIGURES_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # Chronological mapping of years present in the Sentinel time-series (ordered)
-YEARS = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+YEARS = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]
