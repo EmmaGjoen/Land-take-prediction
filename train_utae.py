@@ -168,6 +168,7 @@ def main():
         train_ref_ids,
         frequency=CONFIG["img_frequency"],
         transform=temp_train_transform,
+        calibrate_mode=True
     )
     
     print("Estimating per-channel mean and std from training data...")

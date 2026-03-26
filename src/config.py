@@ -51,13 +51,8 @@ def load_metadata(skip_na: bool = True) -> dict[str, TileMetadata]:
             )
     return meta
 
-def load_all_years() -> list[int]:
-    """Derive the full year range from the metadata file itself."""
-    meta = load_metadata()
-    min_year = min(m.start_year for m in meta.values())
-    max_year = max(m.end_year   for m in meta.values())
-    return list(range(min_year, max_year + 1))
-
-ALL_YEARS: list[int] = load_all_years()
+SENTINEL_START_YEAR = 2016
+SENTINEL_END_YEAR   = 2024
+ALL_YEARS = list(range(SENTINEL_START_YEAR, SENTINEL_END_YEAR + 1))
 ACQUISITIONS_PER_YEAR = 2
 MAX_TIMESTEPS = len(ALL_YEARS) * ACQUISITIONS_PER_YEAR

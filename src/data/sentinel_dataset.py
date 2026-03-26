@@ -34,6 +34,7 @@ class SentinelDataset(Dataset):
         frequency: str | int | None = None,
         prediction_horizon: int = 2,
         input_years: int | None = None,
+        calibrate_mode: bool = False,
     ):
         """
         ids: list of REFIDs (filename stems without the long suffix)
@@ -49,6 +50,8 @@ class SentinelDataset(Dataset):
         self.transform = transform
         self.frequency = frequency
         self.prediction_horizon = prediction_horizon
+        self.input_years = input_years
+        self.calibrate_mode = calibrate_mode
         self.metadata = load_metadata()
 
         # Drop tiles whose cutoff year falls outside the available Sentinel record.
@@ -60,6 +63,10 @@ class SentinelDataset(Dataset):
                 dropped.append(fid)
                 print(f"No metadata is found for {fid}. Check your metadata CSV.")
                 continue
+            if self.calibrate_mode:
+                filtered.append(fid)
+                continue
+
             cutoff_year = meta.end_year - prediction_horizon
             if cutoff_year in ALL_YEARS:
                 filtered.append(fid)
@@ -120,6 +127,17 @@ class SentinelDataset(Dataset):
         else:
             # merge quarters and years to timesteps -> (T, C, H, W)
             img = img.reshape(-1, C, H, W)
+
+        if self.calibrate_mode:
+            # Return raw tensor immediately so stats aren't corrupted by zeros from padding
+        
+            img = torch.from_numpy(img).float()
+            mask = torch.from_numpy(mask).long()
+            mask = (mask > 0).long()
+        
+            if self.transform is not None:
+                img, mask = self.transform(img, mask)
+            return img, mask, torch.zeros(1)
 
         current_T = img.shape[0]
 
