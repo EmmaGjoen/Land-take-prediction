@@ -186,7 +186,7 @@ def main():
     # Always center-crop first to handle variable input sizes
     if CONFIG["augment_train"]:
         train_transform = ComposeTS([
-            CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+            RandomCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
             NormalizeBy(10000.0),
