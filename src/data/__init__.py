@@ -6,8 +6,8 @@ training segmentation models on HABLOSS satellite imagery.
 """
 
 from src.data.sentinel_dataset import SentinelDataset
-from src.data.tessera_dataset import TesseraDataset
-from src.data.wrap_datasets import FusedDataset, FusedSentinelTesseraDataset
+# from src.data.tessera_dataset import TesseraDataset
+# from src.data.wrap_datasets import FusedDataset, FusedSentinelTesseraDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
     compute_normalization_stats,
