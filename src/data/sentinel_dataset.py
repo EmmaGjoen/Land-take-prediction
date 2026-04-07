@@ -37,14 +37,16 @@ class SentinelDataset(Dataset):
         calibrate_mode: bool = False,
     ):
         """
-        ids: list of REFIDs (filename stems without the long suffix)
-        transform: Transform to apply (flips, rotations, normalization)
-        frequency: two quarters a year as default, optional: annual
-        prediction_horizon (K): Number of years before final year in timeseries to cut off.
+        - ids: list of REFIDs (filename stems without the long suffix)
+        - transform: Transform to apply (flips, rotations, normalization)
+        - frequency: two quarters a year as default, optional: annual
+        - prediction_horizon (K): Number of years before final year in timeseries to cut off.
             With K=2, the model only sees data up to final year-2, forcing it to
             predict land take K years in advance.
-        input_years (N): reference year + latest N-1 years before cutoff;
+        - input_years (N): reference year + latest N-1 years before cutoff;
             None means all available years except the ones masked by the prediction  horizon
+        - calibrate mode: use when computing normalization stats to avoid zero padding affecting the mean and std
+        
         """
 
         self.transform = transform
