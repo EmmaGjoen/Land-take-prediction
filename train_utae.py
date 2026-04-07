@@ -114,7 +114,7 @@ def main():
     parser.add_argument("--prediction_horizon", type=int, default=None,
                         help="Override CONFIG prediction_horizon (K)")
     parser.add_argument("--input_years", type=int, default=None,
-                        help="Override CONFIG input_years (N): number of years before cutoff to show")
+                        help="Override CONFIG input_years (N): number of years to show before cutoff")
     args = parser.parse_args()
     if args.prediction_horizon is not None:
         CONFIG["prediction_horizon"] = args.prediction_horizon
