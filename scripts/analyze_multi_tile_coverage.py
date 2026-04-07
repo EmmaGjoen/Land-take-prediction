@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 MASK_DIR    = ROOT / "data" / "raw" / "masks"
 TESSERA_DIR = ROOT / "data" / "processed" / "tessera" / "snapped_to_mask_grid"
-SENTINEL_DIR = ROOT / "data" / "raw" / "Sentinel"
+SENTINEL_DIR = ROOT / "data" / "raw" / "Sentinel_v2"
 
 TESSERA_YEARS = [2018, 2019, 2020]
 TILE_SIZE_DEG = 0.1

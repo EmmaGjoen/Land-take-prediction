@@ -32,12 +32,11 @@ def compute_normalization_stats(
         img_tensor = dataset[idx][0]
         
         if img_tensor.dim() == 4:  # (T, C, H, W)
-            # Rearrange to (C, T*H*W) to sum across all pixels per channel
-            reshaped = img_tensor.view(C, -1).double() 
+            # Permute to (C, T, H, W) then flatten to (C, T*H*W)
+            reshaped = img_tensor.permute(1, 0, 2, 3).reshape(C, -1).double()
             pixels_in_tensor = reshaped.shape[1]
         elif img_tensor.dim() == 3:  # (C, H, W)
-            # Rearrange to (C, H*W)
-            reshaped = img_tensor.view(C, -1).double()
+            reshaped = img_tensor.reshape(C, -1).double()
             pixels_in_tensor = reshaped.shape[1]
         
         # Update running totals
