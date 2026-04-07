@@ -26,6 +26,8 @@ from rasterio.merge import merge as rio_merge
 from rasterio.warp import reproject, Resampling, transform_bounds
 from geotessera import GeoTessera
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.config import MASK_DIR, load_metadata
 
 _WGS84 = CRS.from_epsg(4326)
