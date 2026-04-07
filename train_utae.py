@@ -19,7 +19,6 @@ root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
 from src.config import SENTINEL_DIR, MASK_DIR
-import rasterio
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory
 from src.data.transform import (
@@ -128,7 +127,6 @@ def main():
     torch.use_deterministic_algorithms(True, warn_only=True)
     set_random_seeds(CONFIG["random_seed"])
     
-    # Get device
     device = get_device()
     
     # Get data splits
@@ -137,7 +135,7 @@ def main():
     print("="*80)
     all_ref_ids = get_ref_ids_from_directory(SENTINEL_DIR)
     print(f"Total reference IDs found in Sentinel dir: {len(all_ref_ids)}")
-    # Keep only tiles that also have a mask — new coarse masks don't cover all old Sentinel tiles
+    # Keep only tiles that also have a mask - new coarse masks don't cover all old Sentinel tiles
     all_ref_ids = [fid for fid in all_ref_ids if list(MASK_DIR.glob(f"{fid}*.tif"))]
     print(f"After filtering to tiles with masks: {len(all_ref_ids)}")
     
@@ -160,7 +158,6 @@ def main():
     print("NORMALIZATION")
     print("="*80)
     temp_train_transform = ComposeTS([
-        CenterCropTS(CONFIG["chip_size"]),
         NormalizeBy(10000.0),
     ])
     
@@ -183,10 +180,9 @@ def main():
     print("="*80)
     
     # Training transform with spatial augmentation (flips + rotations)
-    # Always center-crop first to handle variable input sizes
     if CONFIG["augment_train"]:
         train_transform = ComposeTS([
-            RandomCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+            RandomCropTS(CONFIG["chip_size"]),  
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
             NormalizeBy(10000.0),
@@ -194,20 +190,20 @@ def main():
         ])
     else:
         train_transform = ComposeTS([
-            CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+            CenterCropTS(CONFIG["chip_size"]),
             NormalizeBy(10000.0),
             Normalize(mean, std),
         ])
     
-    # Val/test transforms: no augmentation, only normalization (but still crop)
+    # Val/test transforms: no augmentation
     val_transform = ComposeTS([
-        CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+        CenterCropTS(CONFIG["chip_size"]), 
         NormalizeBy(10000.0),
         Normalize(mean, std),
     ])
     
     test_transform = ComposeTS([
-        CenterCropTS(CONFIG["chip_size"]),  # Pad/crop to 64×64
+        CenterCropTS(CONFIG["chip_size"]),
         NormalizeBy(10000.0),
         Normalize(mean, std),
     ])
@@ -418,7 +414,7 @@ def main():
         avg_val_loss = val_loss / len(val_loader)
         val_metrics = compute_metrics_from_confusion(sum_tp, sum_fp, sum_tn, sum_fn)
 
-        # Step LR scheduler — halves LR if val_loss hasn't improved for lr_patience epochs
+        # Step LR scheduler - halves LR if val_loss hasn't improved for lr_patience epochs
         scheduler.step(avg_val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
