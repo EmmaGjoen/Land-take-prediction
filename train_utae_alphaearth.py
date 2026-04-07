@@ -28,11 +28,9 @@ from src.data.alphaearth_segmentation_dataset import (
 )
 from src.data.splits import get_ref_ids_from_directory, get_splits
 from src.data.transform import (
-    compute_normalization_stats,
     ComposeTS,
     RandomCropTS,
     CenterCropTS,
-    Normalize,
     RandomFlipTS,
     RandomRotate90TS,
 )
@@ -104,16 +102,6 @@ def get_device() -> torch.device:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     return device
-
-
-# def get_ref_ids_from_alphaearth_dir(alphaearth_dir: Path) -> list[str]:
-#     """Return sorted unique REFIDs found in ALPHAEARTH_DIR.
-
-#     Filenames follow the convention ``{refid}_VEY_Mosaic.tif``.
-#     """
-#     files = sorted(alphaearth_dir.glob("*_VEY_Mosaic.tif"))
-#     ref_ids = sorted({f.stem.removesuffix("_VEY_Mosaic") for f in files})
-#     return ref_ids
 
 
 # ============================================================================
