@@ -177,7 +177,7 @@ class SentinelDataset(Dataset):
             cutoff_idx  = file_years.index(cutoff_year)
             n_visible_timesteps = min((cutoff_idx + 1) * steps_per_year, current_T)
 
-        # Aplly prediction horizon (K) masking
+        # Apply prediction horizon (K) masking
         img[n_visible_timesteps:]       = 0.0
         positions[n_visible_timesteps:] = 0
 
