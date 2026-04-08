@@ -19,6 +19,9 @@ import os
 from pathlib import Path
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.config import MASK_DIR, load_metadata
+
 
 def load_verify_module(module_path: Path):
     """Load the verify_tessera_alignment.py module from a path and return it."""
@@ -55,28 +58,33 @@ def _append_result_row(results_file: Path, row: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run verification for a single mask by index")
-    parser.add_argument("--masks-dir", type=Path, default=Path("data/raw/masks"))
     parser.add_argument("--tessera-dir", type=Path, default=Path("data/processed/tessera/snapped_to_mask_grid"))
     parser.add_argument("--out-dir", type=Path, default=Path("data/processed/tessera/verification"))
     parser.add_argument("--results-file", type=Path,
                         default=Path("data/processed/tessera/verification/results.csv"),
                         help="Shared CSV file where each task appends its result row")
     parser.add_argument("--year", type=int, default=2024)
-    parser.add_argument("--index", type=int, required=True, help="1-based index into sorted mask list")
+    parser.add_argument("--index", type=int, required=True, help="1-based index into sorted tile list")
     args = parser.parse_args()
 
-    mask_paths = sorted(args.masks_dir.glob("*_mask.tif"))
-    if not mask_paths:
-        print("No mask files found in", args.masks_dir, file=sys.stderr)
+    # Discover tiles via metadata + MASK_DIR, matching training dataset logic.
+    metadata = load_metadata()
+    mask_pairs = []
+    for refid in sorted(metadata.keys()):
+        candidates = sorted(MASK_DIR.glob(f"{refid}*.tif"))
+        if candidates:
+            mask_pairs.append((refid, candidates[0]))
+
+    if not mask_pairs:
+        print(f"No mask files found in {MASK_DIR}", file=sys.stderr)
         sys.exit(2)
 
     idx = args.index - 1
-    if idx < 0 or idx >= len(mask_paths):
-        print(f"Index {args.index} out of range (1..{len(mask_paths)})", file=sys.stderr)
+    if idx < 0 or idx >= len(mask_pairs):
+        print(f"Index {args.index} out of range (1..{len(mask_pairs)})", file=sys.stderr)
         sys.exit(3)
 
-    mask_path = mask_paths[idx]
-    refid = mask_path.name.removesuffix("_mask.tif")
+    refid, mask_path = mask_pairs[idx]
     tessera_path = args.tessera_dir / f"{refid}_tessera_{args.year}_snapped.tif"
 
     if not tessera_path.exists():

@@ -29,11 +29,13 @@ from sklearn.model_selection import train_test_split
 
 ROOT = Path(__file__).resolve().parents[1]
 
-MASK_DIR    = ROOT / "data" / "raw" / "masks"
-TESSERA_DIR = ROOT / "data" / "processed" / "tessera" / "snapped_to_mask_grid"
+import sys
+sys.path.insert(0, str(ROOT))
+from src.config import MASK_DIR, TESSERA_DIR, load_metadata
+
 SENTINEL_DIR = ROOT / "data" / "raw" / "Sentinel_v2"
 
-TESSERA_YEARS = [2018, 2019, 2020]
+TESSERA_YEARS = list(range(2018, 2025))
 TILE_SIZE_DEG = 0.1
 OUT_DIR = ROOT / "data" / "processed" / "tessera" / "multi_tile_analysis"
 
@@ -128,15 +130,20 @@ def build_split_map() -> dict[str, str]:
 # ── main analysis ─────────────────────────────────────────────────────────────
 
 def analyse_masks() -> list[dict]:
-    mask_paths = sorted(MASK_DIR.glob("*_mask.tif"))
-    if not mask_paths:
-        raise RuntimeError(f"No masks found in {MASK_DIR.resolve()}")
+    metadata = load_metadata()
+    mask_pairs = []
+    for refid in sorted(metadata.keys()):
+        candidates = sorted(MASK_DIR.glob(f"{refid}*.tif"))
+        if candidates:
+            mask_pairs.append((refid, candidates[0]))
+
+    if not mask_pairs:
+        raise RuntimeError(f"No mask files found in {MASK_DIR.resolve()}")
 
     split_map = build_split_map()
     records = []
 
-    for mp in mask_paths:
-        refid = mp.name.removesuffix("_mask.tif")
+    for refid, mp in mask_pairs:
         left, bottom, right, top = mask_bounds_wgs84(mp)
         tiles = tiles_for_bbox(left, bottom, right, top)
         n_tiles = len(tiles)

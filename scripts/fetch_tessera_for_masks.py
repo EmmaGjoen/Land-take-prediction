@@ -1,5 +1,8 @@
 """
-Fetch GeoTessera embeddings for HABLOSS mask tiles and snap to mask grid.
+Fetch GeoTessera embeddings for all tiles in the metadata and snap to mask grid.
+
+Tiles are discovered via load_metadata() + MASK_DIR, mirroring the training
+datasets, so fetch coverage always matches what the model expects.
 
 When a mask's bounding box overlaps multiple GeoTessera tiles, all tiles are
 downloaded and merged with rasterio.merge before snapping to the mask grid.
@@ -8,7 +11,7 @@ Usage:
     python scripts/fetch_tessera_for_masks.py
     python scripts/fetch_tessera_for_masks.py --year 2023
     python scripts/fetch_tessera_for_masks.py --year 2018-2024
-    python scripts/fetch_tessera_for_masks.py --masks-dir data/raw/masks --out-dir data/processed/tessera
+    python scripts/fetch_tessera_for_masks.py --force   # reprocess existing
 """
 from __future__ import annotations
 
@@ -22,6 +25,10 @@ from rasterio.crs import CRS
 from rasterio.merge import merge as rio_merge
 from rasterio.warp import reproject, Resampling, transform_bounds
 from geotessera import GeoTessera
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.config import MASK_DIR, load_metadata
 
 _WGS84 = CRS.from_epsg(4326)
 
@@ -112,12 +119,13 @@ def snap_tessera_to_mask_grid(tessera_tifs: list[Path], mask_path: Path, out_pat
             dst.write(dst_data, band_idx + 1)
 
 
-def fetch_one_mask(mask_path: Path, year: int, out_dir: Path, gt: GeoTessera, skip_existing: bool = True) -> str:
+def fetch_one_mask(mask_path: Path, year: int, out_dir: Path, gt: GeoTessera, skip_existing: bool = True, refid: str | None = None) -> str:
     """Fetch Tessera embeddings for a single mask and snap to its grid.
 
     Returns: 'exists', 'ok', 'skipped' (no Tessera coverage), or 'error' (exception).
     """
-    refid = refid_from_mask_path(mask_path)
+    if refid is None:
+        refid = refid_from_mask_path(mask_path)
     snapped_path = out_dir / "snapped_to_mask_grid" / f"{refid}_tessera_{year}_snapped.tif"
     
     if skip_existing and snapped_path.exists():
@@ -161,24 +169,31 @@ def parse_year_arg(year_str: str) -> list[int]:
     return [int(year_str)]
 
 
-def main() -> None: 
+def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch GeoTessera embeddings for HABLOSS masks")
-    parser.add_argument("--masks-dir", type=Path, default=Path("data/raw/masks"), help="Directory containing mask files")
     parser.add_argument("--out-dir", type=Path, default=Path("data/processed/tessera"), help="Output directory")
     parser.add_argument("--year", type=str, default="2018-2024", help="Year or year range (e.g., 2024 or 2018-2024)")
     parser.add_argument("--force", action="store_true", help="Reprocess existing files")
     args = parser.parse_args()
 
-    masks_dir: Path = args.masks_dir
     out_dir: Path = args.out_dir
     years: list[int] = parse_year_arg(args.year)
     skip_existing: bool = not args.force
 
-    mask_paths = sorted(masks_dir.glob("*_mask.tif"))
-    if not mask_paths:
-        raise RuntimeError(f"No masks found in {masks_dir.resolve()}")
+    # Discover tiles via metadata + MASK_DIR, mirroring how the training datasets work.
+    metadata = load_metadata()
+    mask_pairs: list[tuple[str, Path]] = []
+    for refid in sorted(metadata.keys()):
+        candidates = sorted(MASK_DIR.glob(f"{refid}*.tif"))
+        if not candidates:
+            logging.warning(f"[SKIP] No mask file found for {refid} in {MASK_DIR}")
+            continue
+        mask_pairs.append((refid, candidates[0]))
 
-    logging.info(f"Processing {len(mask_paths)} masks for years {years[0]}-{years[-1]}...")
+    if not mask_pairs:
+        raise RuntimeError(f"No mask files found in {MASK_DIR.resolve()}")
+
+    logging.info(f"Processing {len(mask_pairs)} tiles for years {years[0]}-{years[-1]}...")
     
     gt = GeoTessera()
     processed: list[str] = []
@@ -196,19 +211,19 @@ def main() -> None:
         year_skipped = 0
         year_errored = 0
 
-        for mp in mask_paths:
-            result = fetch_one_mask(mp, year=year, out_dir=out_dir, gt=gt, skip_existing=skip_existing)
+        for refid, mp in mask_pairs:
+            result = fetch_one_mask(mp, year=year, out_dir=out_dir, gt=gt, skip_existing=skip_existing, refid=refid)
             if result == "ok":
-                processed.append(f"{mp.name}_{year}")
+                processed.append(f"{refid}_{year}")
                 year_processed += 1
             elif result == "exists":
-                existing.append(f"{mp.name}_{year}")
+                existing.append(f"{refid}_{year}")
                 year_existing += 1
             elif result == "skipped":
-                skipped.append(f"{mp.name}_{year}")
+                skipped.append(f"{refid}_{year}")
                 year_skipped += 1
             else:  # "error"
-                errored.append(f"{mp.name}_{year}")
+                errored.append(f"{refid}_{year}")
                 year_errored += 1
 
         logging.info(
@@ -224,7 +239,7 @@ def main() -> None:
     logging.info(f"Existing:  {len(existing)} mask-year combinations (already processed)")
     logging.info(f"Skipped:   {len(skipped)} mask-year combinations (no Tessera coverage)")
     logging.info(f"Errors:    {len(errored)} mask-year combinations (exception during fetch/snap)")
-    total_possible = len(mask_paths) * len(years)
+    total_possible = len(mask_pairs) * len(years)
     logging.info(f"Total:     {len(processed) + len(existing)}/{total_possible} mask-year combinations with embeddings")
 
     # Write current run's skipped masks (no Tessera coverage). This reflects only the
