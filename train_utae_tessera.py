@@ -37,6 +37,7 @@ sys.path.append(str(root))
 from src.config import MASK_DIR, TESSERA_DIR
 from src.data.tessera_segmentation_dataset import TesseraSegmentationDataset
 from src.data.splits import get_splits, load_folds, get_fold_splits
+from src.utils.training import set_random_seeds, get_device
 from src.data.transform import (
     compute_normalization_stats,
     ComposeTS,
@@ -105,32 +106,6 @@ CONFIG = {
 # HELPERS
 # ============================================================================
 
-def set_random_seeds(seed: int) -> None:
-    """Set all random seeds for full reproducibility."""
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    print(f"All random seeds set to {seed}")
-
-
-def get_device() -> torch.device:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    return device
-
-
-def get_ref_ids_from_tessera_dir(tessera_dir: Path) -> list[str]:
-    """Return sorted unique REFIDs found in TESSERA_DIR.
-
-    Filenames follow the convention ``{refid}_tessera_{year}_snapped.tif``;
-    the REFID is everything before the first ``_tessera_`` token.
-    """
-    files = sorted(tessera_dir.glob("*_tessera_*_snapped.tif"))
-    ref_ids = sorted({f.name.split("_tessera_")[0] for f in files})
-    return ref_ids
 
 
 # ============================================================================
@@ -179,7 +154,7 @@ def main() -> None:
     print("DATA SPLITS")
     print("=" * 80)
 
-    all_ref_ids = get_ref_ids_from_tessera_dir(TESSERA_DIR)
+    all_ref_ids = TesseraSegmentationDataset.get_ref_ids(TESSERA_DIR)
     print(f"Unique REFIDs found in TESSERA_DIR: {len(all_ref_ids)}")
 
     # Keep only tiles that also have a mask file
@@ -381,7 +356,7 @@ def main() -> None:
             "prediction_horizon_K": CONFIG["prediction_horizon"],
             "input_years_N": CONFIG["input_years"],
             "cv_fold": CONFIG["fold"],
-            "split_strategy": "geographic_5fold_cv" if CONFIG["fold"] is not None else "random_7015_15",
+            "split_strategy": "geographic_5fold_cv" if CONFIG["fold"] is not None else "random_70_15_15",
             "epochs": CONFIG["epochs"],
             "learning_rate": CONFIG["learning_rate"],
             "lr_scheduler": "ReduceLROnPlateau",

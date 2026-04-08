@@ -21,6 +21,7 @@ sys.path.append(str(root))
 from src.config import SENTINEL_DIR, MASK_DIR
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.splits import get_splits, get_ref_ids_from_directory, load_folds, get_fold_splits
+from src.utils.training import set_random_seeds, get_device
 from src.data.transform import (
     compute_normalization_stats,
     ComposeTS,
@@ -29,7 +30,7 @@ from src.data.transform import (
     CenterCropTS,
     Normalize,
     RandomFlipTS,
-    RandomRotate90TS
+    RandomRotate90TS,
 )
 from src.models.external.utae import UTAE
 from src.utils.visualization import log_masks
@@ -86,23 +87,6 @@ CONFIG = {
 # SETUP
 # ============================================================================
 
-def set_random_seeds(seed):
-    """Set all random seeds for reproducibility"""
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    print(f"All random seeds set to {seed}")
-
-
-
-def get_device():
-    """Get device for training"""
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    return device
 
 
 # ============================================================================

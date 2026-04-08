@@ -66,6 +66,15 @@ class AlphaEarthSegmentationDataset(Dataset):
     DATASET_NAME = "alphaearth"
     YEARS = ALPHAEARTH_YEARS
 
+    @staticmethod
+    def get_ref_ids(alphaearth_dir: Path) -> list[str]:
+        """Return sorted unique REFIDs found in alphaearth_dir.
+
+        Filenames follow the convention ``{refid}_VEY_Mosaic.tif``.
+        """
+        files = sorted(alphaearth_dir.glob("*_VEY_Mosaic.tif"))
+        return sorted({f.stem.removesuffix("_VEY_Mosaic") for f in files})
+
     def __init__(
         self,
         ids: list[str],

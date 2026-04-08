@@ -37,6 +37,7 @@ from src.data.alphaearth_segmentation_dataset import (
     ALPHAEARTH_YEARS,
 )
 from src.data.splits import get_splits, load_folds, get_fold_splits
+from src.utils.training import set_random_seeds, get_device
 from src.data.transform import (
     compute_normalization_stats,
     ComposeTS,
@@ -101,34 +102,6 @@ CONFIG = {
 }
 
 
-# ============================================================================
-# HELPERS
-# ============================================================================
-
-def set_random_seeds(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    print(f"All random seeds set to {seed}")
-
-
-def get_device() -> torch.device:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    return device
-
-
-def get_ref_ids_from_alphaearth_dir(alphaearth_dir: Path) -> list[str]:
-    """Return sorted unique REFIDs found in ALPHAEARTH_DIR.
-
-    Filenames follow the convention ``{refid}_VEY_Mosaic.tif``.
-    """
-    files = sorted(alphaearth_dir.glob("*_VEY_Mosaic.tif"))
-    ref_ids = sorted({f.stem.removesuffix("_VEY_Mosaic") for f in files})
-    return ref_ids
 
 
 # ============================================================================
@@ -177,7 +150,7 @@ def main() -> None:
     print("DATA SPLITS")
     print("=" * 80)
 
-    all_ref_ids = get_ref_ids_from_alphaearth_dir(ALPHAEARTH_DIR)
+    all_ref_ids = AlphaEarthSegmentationDataset.get_ref_ids(ALPHAEARTH_DIR)
     print(f"Unique REFIDs found in ALPHAEARTH_DIR: {len(all_ref_ids)}")
 
     all_ref_ids = [fid for fid in all_ref_ids if list(MASK_DIR.glob(f"{fid}*.tif"))]
