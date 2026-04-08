@@ -1,24 +1,33 @@
 #!/bin/bash
-
-#SBATCH --job-name=utae_alphaearth_K${K:-2}_N${INPUT_YEARS:-all}
+#
+# 5-fold geographic CV for U-TAE + AlphaEarth.
+# Submits one job per fold (array tasks 0–4).
+#
+# Usage:
+#   sbatch --export=K=2,INPUT_YEARS=4 slurm_utae_alphaearth.sh
+#   sbatch --export=K=1              slurm_utae_alphaearth.sh   # N=all
+#
+# The SLURM_ARRAY_TASK_ID is used as the --fold argument (0–4).
+#
+#SBATCH --job-name=utae_alphaearth
 #SBATCH --account=share-ie-idi
 #SBATCH --partition=GPUQ
 #SBATCH --gres=gpu:1
-#SBATCH --time=04:00:00
+#SBATCH --time=06:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --output=logs/utae_alphaearth/utae_alphaearth_%j.out
-#SBATCH --error=logs/utae_alphaearth/utae_alphaearth_%j.err
+#SBATCH --array=0-4
+#SBATCH --output=logs/utae_alphaearth/fold%a_%A.out
+#SBATCH --error=logs/utae_alphaearth/fold%a_%A.err
 
 echo "=========================================="
 echo "Starting U-TAE + AlphaEarth training job"
 echo "Job ID:        $SLURM_JOB_ID"
-echo "Job name:      $SLURM_JOB_NAME"
+echo "Array task:    $SLURM_ARRAY_TASK_ID  (= fold index)"
 echo "Node(s):       $SLURM_NODELIST"
 echo "Partition:     $SLURM_JOB_PARTITION"
-echo "GPUs:          $SLURM_GPUS"
 echo "=========================================="
 echo ""
 
@@ -28,36 +37,26 @@ module load Python/3.11.3-GCCcore-12.3.0
 WORKDIR=${SLURM_SUBMIT_DIR}
 cd "$WORKDIR"
 
-# Activate project venv
 source .venv/bin/activate
 
-# Load environment variables (WandB API key etc.)
 export $(grep -v '^#' /cluster/home/$USER/Land-take-prediction/.env | xargs)
 
-# Install/update packages to ensure compatibility
-echo "Installing/updating packages..."
-pip install --upgrade torch==2.1.0 torchvision==0.16.0 --quiet
-echo "Package installation complete"
-echo ""
+mkdir -p logs/utae_alphaearth
 
-echo "Running from directory: $WORKDIR"
+K=${K:-2}
+INPUT_YEARS=${INPUT_YEARS:-}
+FOLD=${SLURM_ARRAY_TASK_ID}
+
+echo "Prediction horizon K=${K}"
+echo "Input years N=${INPUT_YEARS:-all}"
+echo "Fold: ${FOLD}"
 echo ""
 
 echo "GPU status:"
 nvidia-smi || echo "nvidia-smi not available"
 echo ""
 
-mkdir -p logs/utae_alphaearth
-
-# Accept prediction horizon K and input window N from environment
-K=${K:-2}
-INPUT_YEARS=${INPUT_YEARS:-}
-
-echo "Prediction horizon K=${K}"
-echo "Input years N=${INPUT_YEARS:-all}"
-
-# Build python command — only pass --input_years if INPUT_YEARS is set
-CMD="python train_utae_alphaearth.py --prediction_horizon $K"
+CMD="python train_utae_alphaearth.py --prediction_horizon $K --fold $FOLD"
 if [ -n "$INPUT_YEARS" ]; then
     CMD="$CMD --input_years $INPUT_YEARS"
 fi
@@ -67,5 +66,5 @@ $CMD
 
 echo ""
 echo "=========================================="
-echo "Job finished"
+echo "Job finished: fold ${FOLD}"
 echo "=========================================="
