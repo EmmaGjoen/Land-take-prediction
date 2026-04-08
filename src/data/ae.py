@@ -65,7 +65,7 @@ class AlphaEarthDataset(Dataset):
 
         if dropped:
             print(
-                f"[SentinelDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s), whose cutoff year falls outside available data. "
+                f"[AlphaEarthDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s), whose cutoff year falls outside available data. "
                 f"{len(filtered)} tiles remain."
             )
 
