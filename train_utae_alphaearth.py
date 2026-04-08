@@ -22,10 +22,11 @@ root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
 from src.config import ALPHAEARTH_DIR, MASK_DIR
-from src.data.alphaearth_segmentation_dataset import (
-    AlphaEarthSegmentationDataset,
-    ALPHAEARTH_YEARS,
-)
+# from src.data.alphaearth_segmentation_dataset import (
+#     AlphaEarthSegmentationDataset,
+#     ALPHAEARTH_YEARS,
+# )
+from src.data.ae import AlphaEarthDataset
 from src.data.splits import get_ref_ids_from_directory, get_splits
 from src.data.transform import (
     ComposeTS,
@@ -178,19 +179,19 @@ def main() -> None:
         CenterCropTS(CONFIG["chip_size"]),
     ])
 
-    train_ds = AlphaEarthSegmentationDataset(
+    train_ds = AlphaEarthDataset(
         train_ref_ids, 
         transform=train_transform, 
         prediction_horizon=CONFIG["prediction_horizon"],
         input_years=CONFIG["input_years"],
     )
-    val_ds = AlphaEarthSegmentationDataset(
+    val_ds = AlphaEarthDataset(
         val_ref_ids, 
         transform=val_transform,
         prediction_horizon=CONFIG["prediction_horizon"],
         input_years=CONFIG["input_years"],
     )
-    test_ds = AlphaEarthSegmentationDataset(
+    test_ds = AlphaEarthDataset(
         test_ref_ids, 
         transform=val_transform,
         prediction_horizon=CONFIG["prediction_horizon"],
@@ -291,8 +292,6 @@ def main() -> None:
         config={
             "architecture": CONFIG["architecture"],
             "dataset": train_ds.DATASET_NAME,
-            "input_modality": "alphaearth_only",
-            "alphaearth_years": ALPHAEARTH_YEARS,
             "alphaearth_channels": C,
             "num_timesteps": T,
             "prediction_horizon_K": CONFIG["prediction_horizon"],
