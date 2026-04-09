@@ -1,7 +1,5 @@
 from pathlib import Path
-from typing import Optional
 
-import numpy as np
 import rasterio
 import torch
 import torch.nn.functional as F
@@ -49,7 +47,7 @@ class AlphaEarthDataset(Dataset):
         ids: list[str],
         transform,
         prediction_horizon: int = 2,
-        input_years: Optional[int] = None,
+        input_years: int | None = None
     ):
         self.transform = transform
         self.prediction_horizon = prediction_horizon
@@ -65,7 +63,7 @@ class AlphaEarthDataset(Dataset):
             
             if meta is None:
                 dropped.append(fid)
-                print(f"[AlphaEarth] Excluded {fid}: No metadata for {fid}.")
+                print(f"[AlphaEarth] Excluded {fid}: No metadata.")
                 continue
             
             if meta.start_year < ALPHAEARTH_YEARS[0]:
