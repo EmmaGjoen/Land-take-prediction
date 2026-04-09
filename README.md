@@ -1,95 +1,128 @@
 # Land-take Prediction
 
-Master's thesis project at NTNU in collaboration with NINA.
+Master's thesis at NTNU in collaboration with NINA. The project compares three input modalities for binary land-take segmentation using U-TAE: raw Sentinel-2 imagery, GeoTessera embeddings, and AlphaEarth embeddings.
 
-## Goal
+## Data
 
-Explore how different input representations (e.g., satellite embeddings, raw imagery) affect land-take prediction models.
+All data lives on IDUN and is gitignored. The required layout is:
+
+```
+data/
+  raw/
+    Sentinel_v2/                  Sentinel-2 mosaics (9 bands, bi-annual, 2016-2024)
+    Land_take_masks_coarse/       Binary change masks (~261 tiles)
+    AlphaEarth/                   AlphaEarth embeddings (64 dims/year, 2018-2024)
+    annotations_metadata_final.csv
+  processed/
+    tessera/
+      snapped_to_mask_grid/       GeoTessera embeddings aligned to mask grid (2017-2024)
+```
 
 ## Project Structure
 
 ```
-├── scripts/                            # Utility scripts
-│   ├── fetch_tessera_for_masks.py          # Download & snap GeoTessera embeddings
-│   ├── eda_tessera.py                      # EDA for Tessera embeddings
-│   ├── generate_tessera_summary.py         # Generate coverage summary
-│   ├── verify_tessera_alignment.py         # Verify spatial alignment
-│   ├── verify_one_mask_by_index.py         # Verify a single mask
-│   └── summarize_verification.py           # Summarize verification results
-├── src/
-│   ├── config.py                       # Paths and training defaults
-│   ├── data/                           # Dataset classes and transforms
-│   │   ├── sentinel_dataset.py             # Sentinel-2 time series loader
-│   │   ├── tessera_dataset.py              # GeoTessera embedding loader
-│   │   ├── alphaearth_dataset.py           # AlphaEarth embedding loader
-│   │   ├── habloss_dataset.py              # HABLOSS VHR loader
-│   │   ├── wrap_datasets.py                # Fused dataset wrappers
-│   │   ├── splits.py                       # Train/val/test splits
-│   │   └── transform.py                    # Shared transforms
-│   ├── models/
-│   │   └── external/
-│   │       └── torchrs_fc_cd.py            # FCEF / FC-Siam models
-│   └── utils/
-│       ├── metrics.py                      # Binary segmentation metrics
-│       └── visualization.py                # WandB mask logging
-├── data/
-│   ├── raw/                            # Raw input data (from HABLOSS)
-│   │   ├── Sentinel/                       # Sentinel-2 mosaics (126 bands)
-│   │   ├── masks/                          # Binary change masks
-│   │   ├── AlphaEarth/                     # AlphaEarth embeddings (448 bands)
-│   │   ├── PlanetScope/                    # PlanetScope mosaics
-│   │   └── vhr/                            # Google VHR imagery
-│   ├── processed/
-│   │   └── tessera/
-│   │       ├── snapped_to_mask_grid/       # Final: aligned to mask grid (used by training)
-│   │       ├── raw_downloads/              # Intermediate: raw API downloads
-│   │       ├── raw_tiles/                  # Intermediate: per-mask tiles
-│   │       ├── tiffs/                      # Intermediate: grid tiffs
-│   │       └── embeddings/                 # Intermediate: yearly embeddings
-│   └── tessera/                        # Tessera EDA outputs & coverage plots
-├── train_early_fusion.py               # FCEF with Sentinel only
-├── train_fcef_tessera.py               # FCEF with Sentinel + GeoTessera
-├── train_fcef_alphaearth.py            # FCEF with Sentinel + AlphaEarth
-├── slurm_*.sh                          # SLURM job scripts for IDUN
-├── IDUN_GUIDE.md                       # Guide for running on IDUN
-└── requirements.txt
-```
+scripts/
+  create_folds.py                 Generate geographic 5-fold CV assignments (run once)
+  fetch_tessera_for_masks.py      Download and snap GeoTessera embeddings to mask grid
+  analyze_multi_tile_coverage.py  Check tessera coverage across tiles
+  generate_tessera_summary.py     Print per-tile embedding coverage summary
+  verify_one_mask_by_index.py     Verify spatial alignment for a single tile (used by SLURM array)
+  summarize_verification.py       Aggregate verification results
+  eda_tessera.py                  Exploratory analysis of tessera embeddings
 
-> **Note:** `data/` is gitignored. The full raw dataset (Sentinel, masks, AlphaEarth, PlanetScope, VHR) lives on IDUN.
-> Only `Sentinel/` and `masks/` are required for Tessera training.
+src/
+  config.py                       All paths and shared constants
+  data/
+    sentinel_dataset.py           Sentinel-2 time series dataset
+    tessera_segmentation_dataset.py  GeoTessera dataset
+    alphaearth_segmentation_dataset.py  AlphaEarth dataset
+    splits.py                     Geographic 5-fold CV and legacy random split utilities
+    transform.py                  Shared transforms (crop, flip, normalize)
+    geographic_folds.csv          Pre-computed fold assignments (committed)
+  models/
+    external/
+      utae.py                     U-TAE model
+      backbones/                  LTAE and ConvLSTM backbones
+  utils/
+    training.py                   Shared set_random_seeds and get_device
+    focal_loss.py                 Focal loss
+    metrics.py                    Binary segmentation metrics
+    visualization.py              WandB mask logging
+
+train_utae.py                     Train U-TAE on Sentinel-2
+train_utae_tessera.py             Train U-TAE on GeoTessera embeddings
+train_utae_alphaearth.py          Train U-TAE on AlphaEarth embeddings
+
+slurm_utae.sh                     SLURM array job for Sentinel experiment (folds 0-4)
+slurm_utae_tessera.sh             SLURM array job for GeoTessera experiment
+slurm_utae_alphaearth.sh          SLURM array job for AlphaEarth experiment
+slurm_fetch_tessera.sh            Fetch GeoTessera embeddings
+slurm_generate_tessera_summary.sh Summarize tessera coverage
+slurm_verify_tessera_alignment_array.sh  Verify tessera alignment (array job)
+slurm_eda_tessera.sh              Run tessera EDA
+```
 
 ## Setup
 
 ```bash
 python -m venv .venv
-.venv\Scripts\Activate.ps1  # Windows
+source .venv/bin/activate        # Linux/Mac
+.venv\Scripts\Activate.ps1       # Windows
 pip install -r requirements.txt
 ```
 
-## Usage
-
-### Fetch GeoTessera embeddings
+On IDUN, load the Python module first:
 
 ```bash
-python scripts/fetch_tessera_for_masks.py --year 2018-2024
+module load Python/3.11.3-GCCcore-12.3.0
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### Train models
+Add your WandB key:
 
 ```bash
-# FCEF with Sentinel only
-python train_early_fusion.py
-
-# FCEF with Sentinel + GeoTessera
-python train_fcef_tessera.py
-
-# FCEF with Sentinel + AlphaEarth
-python train_fcef_alphaearth.py
+echo "WANDB_API_KEY=your_key_here" > .env
 ```
 
-### Temporal slicing
+## Before Training
 
-All FCEF training scripts use `temporal_mode = "first_half"` with `frequency = "annual"`,
-which keeps the first 3 out of 7 years of the time series (2018, 2019, 2020).
+Run once to generate the geographic fold assignments:
 
-For running on IDUN, see [IDUN_GUIDE.md](IDUN_GUIDE.md).
+```bash
+python scripts/create_folds.py
+```
+
+This writes `src/data/geographic_folds.csv` and prints per-fold tile counts and coordinate ranges. Commit the file so all experiments use identical splits.
+
+Fetch GeoTessera embeddings (if not already done):
+
+```bash
+sbatch slurm_fetch_tessera.sh
+```
+
+## Training
+
+Each training script supports `--prediction_horizon K`, `--input_years N`, and `--fold 0-4`. The SLURM scripts run all five folds as an array job.
+
+```bash
+# Run all five folds for each modality
+sbatch --export=K=2,INPUT_YEARS=4 slurm_utae.sh
+sbatch --export=K=2,INPUT_YEARS=4 slurm_utae_tessera.sh
+sbatch --export=K=2,INPUT_YEARS=4 slurm_utae_alphaearth.sh
+```
+
+To run a single fold:
+
+```bash
+sbatch --export=K=2,INPUT_YEARS=4 --array=0-0 slurm_utae_tessera.sh
+```
+
+## Monitoring Jobs
+
+```bash
+squeue -u $USER
+scancel <job_id>
+tail -f logs/utae_tessera/fold0_<job_id>.out
+```
