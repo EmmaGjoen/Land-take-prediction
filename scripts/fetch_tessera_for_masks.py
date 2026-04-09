@@ -10,7 +10,7 @@ downloaded and merged with rasterio.merge before snapping to the mask grid.
 Usage:
     python scripts/fetch_tessera_for_masks.py
     python scripts/fetch_tessera_for_masks.py --year 2023
-    python scripts/fetch_tessera_for_masks.py --year 2018-2024
+    python scripts/fetch_tessera_for_masks.py --year 2017-2024
     python scripts/fetch_tessera_for_masks.py --force   # reprocess existing
 """
 from __future__ import annotations
@@ -172,7 +172,7 @@ def parse_year_arg(year_str: str) -> list[int]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch GeoTessera embeddings for HABLOSS masks")
     parser.add_argument("--out-dir", type=Path, default=Path("data/processed/tessera"), help="Output directory")
-    parser.add_argument("--year", type=str, default="2018-2024", help="Year or year range (e.g., 2024 or 2018-2024)")
+    parser.add_argument("--year", type=str, default="2017-2024", help="Year or year range (e.g., 2024 or 2017-2024)")
     parser.add_argument("--force", action="store_true", help="Reprocess existing files")
     args = parser.parse_args()
 
