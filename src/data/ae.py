@@ -7,8 +7,7 @@ from torch.utils.data import Dataset
 from src.config import (
     ALPHAEARTH_DIR,
     MASK_DIR,
-    ALL_YEARS,
-    MAX_TIMESTEPS,
+    ALPHAEARTH_YEARS,
     load_metadata,
 )
 
@@ -49,6 +48,9 @@ class AlphaEarthDataset(Dataset):
         self.input_years        = input_years
         self.metadata           = load_metadata()
 
+        self.years_range = ALPHAEARTH_YEARS
+        self.max_timesteps = len(ALPHAEARTH_YEARS)
+
         # Drop tiles whose cutoff year falls outside the available AlphaEarth record
         filtered, dropped = [], []
         for fid in ids:
@@ -58,7 +60,7 @@ class AlphaEarthDataset(Dataset):
                 print(f"No metadata found for {fid}. Check your metadata CSV.")
                 continue
             cutoff_year = meta.end_year - prediction_horizon
-            if cutoff_year in ALL_YEARS:
+            if cutoff_year in self.years_range:
                 filtered.append(fid)
             else:
                 dropped.append(fid)
@@ -103,10 +105,10 @@ class AlphaEarthDataset(Dataset):
         # Reshape to (num_years, C, H, W)
         emb = emb.reshape(num_years, C, H, W)
 
-        file_years  = list(range(ALL_YEARS[0], ALL_YEARS[0] + num_years))
+        file_years  = list(range(self.years_range[0], self.years_range[0] + num_years))
         valid_years = [y for y in file_years if meta.start_year <= y <= meta.end_year]
-        start_clip  = valid_years[0] - ALL_YEARS[0]
-        end_clip    = valid_years[-1] - ALL_YEARS[0]
+        start_clip  = valid_years[0] - self.years_range[0]
+        end_clip    = valid_years[-1] - self.years_range[0]
 
         # Slice img along the year axis
         emb = emb[start_clip : end_clip + 1]   # shape: (num_valid_years, C, H, W)
@@ -117,7 +119,7 @@ class AlphaEarthDataset(Dataset):
         # Position encoding: encode each timestep's absolute temporal position.
         # Positions are 1-indexed so that 0 is always available to mark padding.
         # U-TAE masks out any timestep with position=0 from attention.
-        start_pos = file_years[0] - ALL_YEARS[0] + 1
+        start_pos = file_years[0] - self.years_range[0] + 1
         positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
 
         # to torch tensors

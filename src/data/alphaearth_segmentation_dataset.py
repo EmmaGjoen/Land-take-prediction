@@ -13,12 +13,22 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
-from src.config import ALL_YEARS, ALPHAEARTH_DIR, MASK_DIR, load_metadata
+from src.config import ALPHAEARTH_YEARS, ALPHAEARTH_DIR, MASK_DIR, load_metadata
 
 # AlphaEarth embeddings span exactly these years (fixed by the GEE export).
-ALPHAEARTH_YEARS: list[int] = [2018, 2019, 2020, 2021, 2022, 2023, 2024]
 _BANDS_PER_YEAR = 64
 _EXPECTED_BANDS = len(ALPHAEARTH_YEARS) * _BANDS_PER_YEAR  # 448
+
+def find_file_by_prefix(base_dir: Path, fid: str) -> Path:
+    """
+    Find the unique .tif file in base_dir whose name starts with fid.
+    """
+    candidates = sorted(base_dir.glob(f"{fid}*.tif"))
+    if not candidates:
+        raise FileNotFoundError(f"No file starting with {fid!r} in {base_dir}")
+    if len(candidates) > 1:
+        raise RuntimeError(f"Multiple files starting with {fid!r} in {base_dir}: {candidates}")
+    return candidates[0]
 
 
 class AlphaEarthSegmentationDataset(Dataset):
@@ -77,71 +87,53 @@ class AlphaEarthSegmentationDataset(Dataset):
         self.prediction_horizon = prediction_horizon
         self.input_years = input_years
         self.max_timesteps = len(ALPHAEARTH_YEARS)
-
         self.metadata = load_metadata()
+        self.tile_years: dict[str, list[int]] = {}
 
         # ------------------------------------------------------------------ #
-        # Step 1: drop tiles with no metadata or whose cutoff is out of range #
+        # Drop tiles with no metadata or whose cutoff or start year is out of range #
         # ------------------------------------------------------------------ #
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
+            
             if meta is None:
                 dropped.append(fid)
-                print(f"[AlphaEarthSegmentationDataset] No metadata for {fid}, skipping.")
+                print(f"[AlphaEarth] No metadata for {fid}, skipping.")
                 continue
+            
+            if meta.start_year < ALPHAEARTH_YEARS[0]:
+                dropped.append(fid)
+                print(f"[AlphaEarth] file {fid} has annotation start year before {ALPHAEARTH_YEARS[0]}, skipping.")
+                continue
+
             cutoff_year = meta.end_year - prediction_horizon
-            # Effective valid years: intersection of AlphaEarth range and VHR window
             tile_years = [
                 y for y in ALPHAEARTH_YEARS
                 if meta.start_year <= y <= meta.end_year
             ]
+
             if not tile_years or cutoff_year not in tile_years:
+                print(f"[AlphaEarth] Excluded {fid}: Valid data window is empty or missing the {cutoff_year} cutoff year.")
                 dropped.append(fid)
             else:
                 filtered.append(fid)
+                self.tile_years[fid] = tile_years
+        
         if dropped:
             print(
-                f"[AlphaEarthSegmentationDataset] K={prediction_horizon}: excluded "
-                f"{len(dropped)} tile(s) whose cutoff year is outside available data. "
+                f"[AlphaEarthDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s)"
                 f"{len(filtered)} remain."
             )
-        ids = filtered
+        self.ids = filtered
 
-        # ------------------------------------------------------------------ #
-        # Step 2: resolve file paths; exclude tiles with missing files        #
-        # ------------------------------------------------------------------ #
-        self.emb_paths: dict[str, Path] = {}
+        self.emb_paths:  dict[str, Path] = {}
         self.mask_paths: dict[str, Path] = {}
-        self.tile_years: dict[str, list[int]] = {}
-        valid_ids: list[str] = []
+        
+        for fid in self.ids:
+            self.emb_paths[fid]  = find_file_by_prefix(ALPHAEARTH_DIR, fid)
+            self.mask_paths[fid] = find_file_by_prefix(MASK_DIR, fid)
 
-        for fid in ids:
-            meta = self.metadata[fid]
-            tile_years = [
-                y for y in ALPHAEARTH_YEARS
-                if meta.start_year <= y <= meta.end_year
-            ]
-
-            # AlphaEarth: single file per tile
-            candidates = sorted(ALPHAEARTH_DIR.glob(f"{fid}*.tif"))
-            if not candidates:
-                print(f"[AlphaEarthSegmentationDataset] Excluded {fid}: no AlphaEarth file found.")
-                continue
-
-            mask_candidates = sorted(MASK_DIR.glob(f"{fid}*.tif"))
-            if not mask_candidates:
-                print(f"[AlphaEarthSegmentationDataset] Excluded {fid}: no mask file found.")
-                continue
-
-            self.emb_paths[fid] = candidates[0]
-            self.mask_paths[fid] = mask_candidates[0]
-            self.tile_years[fid] = tile_years
-            valid_ids.append(fid)
-
-        self.ids = valid_ids
-
-    # ---------------------------------------------------------------------- #
 
     def __len__(self) -> int:
         return len(self.ids)
