@@ -57,7 +57,7 @@ class SentinelDataset(Dataset):
         self.metadata = load_metadata()
 
         # Drop tiles whose cutoff year falls outside the available Sentinel record.
-        # Example: endYear=2022 with K=5 → cutoff=2017, which is before our data starts.
+        # Example: end_year=2022 with K=5 → cutoff=2017, which is before our data starts.
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
@@ -164,7 +164,7 @@ class SentinelDataset(Dataset):
         if self.transform is not None:
             img, mask = self.transform(img, mask)
 
-        # Zero out timesteps after cutoff year (endYear - K) so U-TAE ignores them.
+        # Zero out timesteps after cutoff year (end_year - K) so U-TAE ignores them.
         # The model only sees data up to the cutoff, forcing it to predict K years ahead.
         cutoff_year = meta.end_year - self.prediction_horizon
         steps_per_year = 1 if self.frequency == "annual" else num_quarters

@@ -114,7 +114,7 @@ def main():
     parser.add_argument("--prediction_horizon", type=int, default=None,
                         help="Override CONFIG prediction_horizon (K)")
     parser.add_argument("--input_years", type=int, default=None,
-                        help="Override CONFIG input_years (N): number of years before cutoff to show")
+                        help="Override CONFIG input_years (N): number of years to show before cutoff")
     args = parser.parse_args()
     if args.prediction_horizon is not None:
         CONFIG["prediction_horizon"] = args.prediction_horizon
@@ -231,11 +231,10 @@ def main():
         input_years=CONFIG["input_years"],
     )
     
-    print(f"✓ Datasets created for pre-cropped {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
-    print(f"Train chips: {len(train_ds)} (from {len(train_ref_ids)} REFIDs) - with flips + rotations")
-    print(f"Val chips: {len(val_ds)} (from {len(val_ref_ids)} REFIDs) - no augmentation")
-    print(f"Test chips: {len(test_ds)} (from {len(test_ref_ids)} REFIDs) - no augmentation")
-    print(f"Augmentation enabled: {CONFIG['augment_train']}")
+    print(f"Datasets created for {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
+    print(f"  Train: {len(train_ds)} chips (augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'})")
+    print(f"  Val:   {len(val_ds)} chips")
+    print(f"  Test:  {len(test_ds)} chips")
     
     # Create dataloaders
     def worker_init_fn(worker_id):
@@ -268,7 +267,7 @@ def main():
         generator=torch.Generator().manual_seed(CONFIG["random_seed"])
     )
     
-    print(f"✓ Dataloaders created with reproducible shuffling (seed={CONFIG['random_seed']})")
+    print(f"Dataloaders created with reproducible shuffling (seed={CONFIG['random_seed']})")
     
     # Build model
     print("\n" + "="*80)
