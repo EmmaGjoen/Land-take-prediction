@@ -51,9 +51,6 @@ def load_metadata(skip_na: bool = True) -> dict[str, TileMetadata]:
             )
     return meta
 
-SENTINEL_START_YEAR = 2016
-SENTINEL_END_YEAR   = 2024
-ALL_YEARS = list(range(SENTINEL_START_YEAR, SENTINEL_END_YEAR + 1))
+SENTINEL_YEARS = list(range(2016,2025))
 ALPHAEARTH_YEARS = list(range(2018,2025))
-ACQUISITIONS_PER_YEAR = 2
-MAX_TIMESTEPS = 20
+ACQUISITIONS_PER_YEAR_SENTINEL = 2

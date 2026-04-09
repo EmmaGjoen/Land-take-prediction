@@ -196,7 +196,7 @@ def main() -> None:
 
     logging.info(f"Processing {len(mask_pairs)} tiles for years {years[0]}-{years[-1]}...")
     
-    gt = GeoTessera()
+    gt = GeoTessera(registry_path="registry.parquet")
     processed: list[str] = []
     existing: list[str] = []
     skipped: list[str] = []
