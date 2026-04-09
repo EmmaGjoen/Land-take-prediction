@@ -22,11 +22,7 @@ root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
 from src.config import ALPHAEARTH_DIR, MASK_DIR
-from src.data.alphaearth_segmentation_dataset import (
-    AlphaEarthSegmentationDataset,
-    ALPHAEARTH_YEARS,
-)
-# from src.data.ae import AlphaEarthDataset
+from src.data.alphaearth_dataset import AlphaEarthDataset
 from src.data.splits import get_ref_ids_from_directory, get_splits
 from src.data.transform import (
     ComposeTS,
@@ -60,7 +56,7 @@ CONFIG = {
 
     # Data
     "chip_size": 64,
-    "prediction_horizon": 2,        # K: zero timesteps from (endYear - K) onwards per tile
+    "prediction_horizon": 2,        # K: zero timesteps from (end_year - K) onwards per tile
     "input_years": None,            # N: only show the last N years before the cutoff; None = all available
 
     # Loss
@@ -175,27 +171,22 @@ def main() -> None:
             CenterCropTS(CONFIG["chip_size"]),
         ])
 
-    val_transform = ComposeTS([
+    eval_transform = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),
     ])
+    shared_ds_kwargs = dict(
+        prediction_horizon=CONFIG["prediction_horizon"],
+        input_years=CONFIG["input_years"],
+    )
 
-    train_ds = AlphaEarthSegmentationDataset(
-        train_ref_ids, 
-        transform=train_transform, 
-        prediction_horizon=CONFIG["prediction_horizon"],
-        input_years=CONFIG["input_years"],
+    train_ds = AlphaEarthDataset(
+        train_ref_ids, transform=train_transform, **shared_ds_kwargs
     )
-    val_ds = AlphaEarthSegmentationDataset(
-        val_ref_ids, 
-        transform=val_transform,
-        prediction_horizon=CONFIG["prediction_horizon"],
-        input_years=CONFIG["input_years"],
+    val_ds = AlphaEarthDataset(
+        val_ref_ids, transform=eval_transform, **shared_ds_kwargs
     )
-    test_ds = AlphaEarthSegmentationDataset(
-        test_ref_ids, 
-        transform=val_transform,
-        prediction_horizon=CONFIG["prediction_horizon"],
-        input_years=CONFIG["input_years"],
+    test_ds = AlphaEarthDataset(
+        test_ref_ids, transform=eval_transform, **shared_ds_kwargs
     )
 
     print(f"Datasets created for {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
@@ -288,7 +279,7 @@ def main() -> None:
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}",
+        name=f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N={n_label}",
         config={
             "architecture": CONFIG["architecture"],
             "dataset": train_ds.DATASET_NAME,
