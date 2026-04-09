@@ -90,8 +90,11 @@ class AlphaEarthSegmentationDataset(Dataset):
         self.metadata = load_metadata()
 
         # ------------------------------------------------------------------ #
-        # Step 1: drop tiles with no metadata or whose cutoff is out of range #
+        # Step 1: keep tiles with at least 1 visible AlphaEarth year         #
         # ------------------------------------------------------------------ #
+        # Tiles with fewer visible years than N are kept and zero-padded.
+        # This maximises the dataset while keeping the temporal masking
+        # experiment intact. Only tiles with 0 visible years are excluded.
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
@@ -100,19 +103,18 @@ class AlphaEarthSegmentationDataset(Dataset):
                 print(f"[AlphaEarthSegmentationDataset] No metadata for {fid}, skipping.")
                 continue
             cutoff_year = meta.end_year - prediction_horizon
-            # Effective valid years: intersection of AlphaEarth range and VHR window
             tile_years = [
                 y for y in ALPHAEARTH_YEARS
                 if meta.start_year <= y <= meta.end_year
             ]
-            if not tile_years or cutoff_year not in tile_years:
-                dropped.append(fid)
-            else:
+            if any(y <= cutoff_year for y in tile_years):
                 filtered.append(fid)
+            else:
+                dropped.append(fid)
         if dropped:
             print(
                 f"[AlphaEarthSegmentationDataset] K={prediction_horizon}: excluded "
-                f"{len(dropped)} tile(s) whose cutoff year is outside available data. "
+                f"{len(dropped)} tile(s) with no visible years before cutoff. "
                 f"{len(filtered)} remain."
             )
         ids = filtered
