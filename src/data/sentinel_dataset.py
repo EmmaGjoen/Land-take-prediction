@@ -56,8 +56,10 @@ class SentinelDataset(Dataset):
         self.calibrate_mode = calibrate_mode
         self.metadata = load_metadata()
 
-        # Drop tiles whose cutoff year falls outside the available Sentinel record.
-        # Example: endYear=2022 with K=5 → cutoff=2017, which is before our data starts.
+        # Keep tiles that have at least 1 visible Sentinel year before the cutoff.
+        # A tile is usable if cutoff_year is within the Sentinel record AND >= startYear.
+        # Tiles with fewer visible years than N are kept and zero-padded — this maximises
+        # the dataset while keeping the temporal masking experiment intact.
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
@@ -70,14 +72,14 @@ class SentinelDataset(Dataset):
                 continue
 
             cutoff_year = meta.end_year - prediction_horizon
-            if cutoff_year in ALL_YEARS:
+            if cutoff_year in ALL_YEARS and cutoff_year >= meta.start_year:
                 filtered.append(fid)
             else:
                 dropped.append(fid)
         if dropped:
             print(
-                f"[SentinelDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s), whose cutoff year falls outside available data. "
-                f"{len(filtered)} tiles remain."
+                f"[SentinelDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s) "
+                f"with no visible years before cutoff. {len(filtered)} tiles remain."
             )
         self.ids = filtered
 
