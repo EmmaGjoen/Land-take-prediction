@@ -53,9 +53,11 @@ class SentinelDataset(Dataset):
         self.prediction_horizon = prediction_horizon
         self.input_years = input_years
         self.calibrate_mode = calibrate_mode
-        self.max_timesteps = len(SENTINEL_YEARS)
         self.metadata = load_metadata()
         self.tile_years: dict[str, list[int]] = {}
+
+        self.steps_per_year = 1 if self.frequency == "annual" else ACQUISITIONS_PER_YEAR_SENTINEL
+        self.max_timesteps = len(SENTINEL_YEARS) * self.steps_per_year
 
         # Drop tiles with no metadata or whose cutoff or start year is out of range 
         # Example: end_year=2020 with K=5 → cutoff=2015, which is before our data starts.
@@ -86,9 +88,8 @@ class SentinelDataset(Dataset):
             if not tile_years or cutoff_year not in tile_years:
                 print(f"[Sentinel] Excluded {fid}: Valid data window is empty or missing the {cutoff_year} cutoff year.")
                 dropped.append(fid)
-                filtered.append(fid)
             else:
-                dropped.append(fid)
+                filtered.append(fid)
                 self.tile_years[fid] = tile_years
 
         if dropped:
@@ -181,9 +182,7 @@ class SentinelDataset(Dataset):
         # The model only sees data up to the cutoff, forcing it to predict K years ahead.
         cutoff_year = meta.end_year - self.prediction_horizon
         cutoff_idx  = tile_years.index(cutoff_year)
-        
-        steps_per_year = 1 if self.frequency == "annual" else num_quarters
-        n_visible = (cutoff_idx + 1) * steps_per_year
+        n_visible = (cutoff_idx + 1) * self.steps_per_year
 
         # Aplly prediction horizon (K) masking
         img[n_visible:] = 0.0
@@ -198,8 +197,8 @@ class SentinelDataset(Dataset):
             for i, y in enumerate(tile_years[:cutoff_idx + 1]):
                 # If the year is NOT the start year of the tile AND falls before our N-1 window, mask it
                 if y != tile_years[0] and y <= window_limit:
-                    t_start = i * steps_per_year
-                    t_end = t_start + steps_per_year
+                    t_start = i * self.steps_per_year
+                    t_end = t_start + self.steps_per_year
 
                     img[t_start:t_end] = 0.0
                     positions[t_start:t_end] = 0
