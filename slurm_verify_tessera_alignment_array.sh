@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
 #SBATCH --partition=CPUQ
-#SBATCH --array=1-55%20
+#SBATCH --array=1-261%20
 
 echo "=========================================="
 echo "Job started: $(date)"

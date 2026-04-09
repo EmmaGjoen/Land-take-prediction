@@ -13,6 +13,10 @@ from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.config import MASK_DIR, TESSERA_DIR as DEFAULT_TESSERA_DIR, load_metadata
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -33,16 +37,17 @@ def parse_filename(filename: str) -> tuple[str, int | None]:
     return filename, None
 
 
-def scan_coverage(tessera_dir: Path, masks_dir: Path, years: list[int]) -> dict:
+def scan_coverage(tessera_dir: Path, years: list[int]) -> dict:
     """Scan files to determine actual coverage."""
-    
-    # Get all mask IDs from masks directory
+
+    # Discover tiles via metadata + MASK_DIR, matching training dataset logic.
+    metadata = load_metadata()
     all_masks = set()
-    for mask_file in masks_dir.glob("*_mask.tif"):
-        mask_id = mask_file.name.removesuffix("_mask.tif")
-        all_masks.add(mask_id)
-    
-    logging.info(f"Found {len(all_masks)} masks in {masks_dir}")
+    for refid in metadata:
+        if sorted(MASK_DIR.glob(f"{refid}*.tif")):
+            all_masks.add(refid)
+
+    logging.info(f"Found {len(all_masks)} tiles with mask files in {MASK_DIR}")
     
     # Scan tessera files
     tessera_files = list(tessera_dir.glob("*_tessera_*_snapped.tif"))
@@ -189,12 +194,6 @@ def main() -> None:
         help="Directory containing tessera GeoTIFFs"
     )
     parser.add_argument(
-        "--masks-dir",
-        type=Path,
-        default=Path("data/raw/masks"),
-        help="Directory containing mask files"
-    )
-    parser.add_argument(
         "--out-file",
         type=Path,
         default=Path("data/processed/tessera/COVERAGE_SUMMARY.md"),
@@ -207,13 +206,13 @@ def main() -> None:
         help="Year range"
     )
     args = parser.parse_args()
-    
+
     # Parse years
     start, end = args.years.split("-")
     years = list(range(int(start), int(end) + 1))
-    
+
     # Scan coverage
-    data = scan_coverage(args.tessera_dir, args.masks_dir, years)
+    data = scan_coverage(args.tessera_dir, years)
     
     # Generate report
     generate_markdown_summary(data, args.out_file)
