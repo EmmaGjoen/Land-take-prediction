@@ -65,12 +65,12 @@ class AlphaEarthSegmentationDataset(Dataset):
             
             if meta is None:
                 dropped.append(fid)
-                print(f"[AlphaEarth] No metadata for {fid}, skipping.")
+                print(f"[AlphaEarth] Excluded {fid}: No metadata for {fid}.")
                 continue
             
             if meta.start_year < ALPHAEARTH_YEARS[0]:
                 dropped.append(fid)
-                print(f"[AlphaEarth] file {fid} has annotation start year before {ALPHAEARTH_YEARS[0]}, skipping.")
+                print(f"[AlphaEarth] Excluded {fid}: has annotation start year before {ALPHAEARTH_YEARS[0]}.")
                 continue
 
             cutoff_year = meta.end_year - prediction_horizon
@@ -88,7 +88,7 @@ class AlphaEarthSegmentationDataset(Dataset):
         
         if dropped:
             print(
-                f"[AlphaEarthDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s)"
+                f"[AlphaEarthDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s). "
                 f"{len(filtered)} remain."
             )
         self.ids = filtered
