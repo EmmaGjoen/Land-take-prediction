@@ -38,10 +38,9 @@ from src.config import MASK_DIR, TESSERA_DIR
 from src.data.tessera_segmentation_dataset import TesseraSegmentationDataset
 from src.data.splits import get_splits
 from src.data.transform import (
-    compute_normalization_stats,
     ComposeTS,
+    RandomCropTS,
     CenterCropTS,
-    Normalize,
     RandomFlipTS,
     RandomRotate90TS,
 )
@@ -87,9 +86,7 @@ CONFIG = {
     "batch_size": 4,
     "augment_train": True,      # Random flips + 90° rotations
 
-    # Normalisation — TESSERA embeddings are not raw reflectance, so we
-    # standardise per-channel without the ÷10 000 pre-scaling used for Sentinel.
-    "normalization": "standardize",
+    "normalization": None,
     "num_samples_for_stats": 2000,
 
     # DataLoader
@@ -198,7 +195,7 @@ def main() -> None:
 
     if CONFIG["augment_train"]:
         train_transform = ComposeTS([
-            CenterCropTS(CONFIG["chip_size"]),
+            RandomCropTS(CONFIG["chip_size"]),
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
         ])
