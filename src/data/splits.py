@@ -91,3 +91,13 @@ def get_ref_ids_from_directory(
     files = sorted(directory.glob(pattern))
     ref_ids = [f.stem.replace(exclude_suffix, "") for f in files]
     return ref_ids
+
+def get_ref_ids_from_tessera_dir(tessera_dir: Path) -> list[str]:
+    """Return sorted unique REFIDs found in TESSERA_DIR.
+
+    Filenames follow the convention ``{refid}_tessera_{year}_snapped.tif``;
+    the REFID is everything before the first ``_tessera_`` token.
+    """
+    files = sorted(tessera_dir.glob("*_tessera_*_snapped.tif"))
+    ref_ids = sorted({f.name.split("_tessera_")[0] for f in files})
+    return ref_ids

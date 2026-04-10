@@ -13,7 +13,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
-from src.config import ALL_YEARS, MASK_DIR, TESSERA_DIR, load_metadata
+from src.config import TESSERA_YEARS, MASK_DIR, TESSERA_DIR, load_metadata
 
 
 class TesseraSegmentationDataset(Dataset):
@@ -32,8 +32,8 @@ class TesseraSegmentationDataset(Dataset):
     have the same temporal length.
 
     **Temporal positions** follow the same convention as SentinelDataset (annual
-    mode): ``position = year - ALL_YEARS[0] + 1``, giving the first year in
-    ``ALL_YEARS`` → 1.  Position 0 is reserved for U-TAE's pad-value masking;
+    mode): ``position = year - TESSERA_YEARS[0] + 1``, giving the first year in
+    ``TESSERA_YEARS`` → 1.  Position 0 is reserved for U-TAE's pad-value masking;
     zeroed/padded timesteps always receive position 0.
 
     **Temporal masking** (applied after the transform):
@@ -67,12 +67,11 @@ class TesseraSegmentationDataset(Dataset):
         self,
         ids: list[str],
         transform,
-        years: Optional[list[int]] = None,
         prediction_horizon: int = 2,
-        input_years: Optional[int] = None,
+        input_years: int | None = None,
     ):
         self.transform = transform
-        self.years = list(years) if years is not None else list(ALL_YEARS)
+        self.years = TESSERA_YEARS
         self.prediction_horizon = prediction_horizon
         self.input_years = input_years
         self.max_timesteps = len(self.years)  # pad all samples to this length
@@ -182,9 +181,9 @@ class TesseraSegmentationDataset(Dataset):
 
         # ---- Annual temporal positions ------------------------------------ #
         # Encoding matches SentinelDataset annual mode:
-        #   position = (year - ALL_YEARS[0]) + 1  →  first year in ALL_YEARS gets 1
+        #   position = (year - TESSERA_YEARS[0]) + 1  →  first year in TESSERA_YEARS gets 1
         # Position 0 is reserved for pad-value masking by U-TAE.
-        start_pos = tile_years[0] - ALL_YEARS[0] + 1
+        start_pos = tile_years[0] - TESSERA_YEARS[0] + 1
         positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
 
         # ---- Apply transform (crop / augmentation / normalisation) -------- #
