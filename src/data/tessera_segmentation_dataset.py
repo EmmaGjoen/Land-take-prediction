@@ -11,7 +11,7 @@ from file_helpers import find_file_by_prefix
 from src.config import TESSERA_YEARS, MASK_DIR, TESSERA_DIR, load_metadata
 
 class TesseraSegmentationDataset(Dataset):
-    """Load GeoTessera yearly embeddings paired with land-take segmentation masks ostitions encoding for the embedding timeseries.
+    """Load GeoTessera yearly embeddings paired with land-take segmentation masks postitions encoding for the embedding timeseries.
 
     The loaded years are stacked chronologically to form a ``(T, 128, H, W)``
     tensor, padded with zeros to ``len(TESSERA_YEARS)`` so that all samples in a batch
@@ -67,7 +67,7 @@ class TesseraSegmentationDataset(Dataset):
                 continue
 
             cutoff_year = meta.end_year - prediction_horizon
-            tile_years = [y for y in self.years if meta.start_year <= y <= meta.end_year]
+            tile_years = [y for y in TESSERA_YEARS if meta.start_year <= y <= meta.end_year]
 
             if not tile_years or cutoff_year not in tile_years:
                 dropped.append(fid)
@@ -134,7 +134,7 @@ class TesseraSegmentationDataset(Dataset):
                 arr = src.read()  # (128, H, W)
             if arr.shape[0] != self._BANDS_PER_YEAR:
                 raise ValueError(
-                    f"{fid}: expected {self.BANDS_PER_YEAR} bands, "
+                    f"{fid}: expected {self._BANDS_PER_YEAR} bands, "
                     f"got {arr.shape[0]} at {path}"
                 )
             yearly.append(arr)
@@ -157,14 +157,14 @@ class TesseraSegmentationDataset(Dataset):
 
         # Apply transform 
         if self.transform is not None:
-            img, mask = self.transform(img, mask)
+            emb, mask = self.transform(emb, mask)
 
         # Temporal masking
         cutoff_year = meta.end_year - self.prediction_horizon
         cutoff_idx = tile_years.index(cutoff_year)
         n_visible = cutoff_idx + 1
 
-        img[n_visible:] = 0.0
+        emb[n_visible:] = 0.0
         positions[n_visible:] = 0
 
         # input_years (N) windowing: keep start_year(tile_years[0]) + latest (N-1) years before cutoff
@@ -172,16 +172,16 @@ class TesseraSegmentationDataset(Dataset):
             window_limit = cutoff_year - (self.input_years - 1)
             for i, y in enumerate(tile_years[:cutoff_idx + 1]):
                 if y != tile_years[0] and y <= window_limit:
-                    img[i] = 0.0
+                    emb[i] = 0.0
                     positions[i] = 0
 
         # Pad to max_timesteps for consistent batching
         if current_T < self.max_timesteps:
             pad_len = self.max_timesteps - current_T
-            img = F.pad(img, (0, 0, 0, 0, 0, 0, 0, pad_len))
+            emb = F.pad(emb, (0, 0, 0, 0, 0, 0, 0, pad_len))
             positions = F.pad(positions, (0, pad_len))
         elif current_T > self.max_timesteps:
-            img = img[:self.max_timesteps]
+            emb = emb[:self.max_timesteps]
             positions = positions[:self.max_timesteps]
 
-        return img, mask, positions
+        return emb, mask, positions
