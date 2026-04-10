@@ -17,6 +17,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import socket
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +34,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.config import MASK_DIR, load_metadata
 
 _WGS84 = CRS.from_epsg(4326)
+_thread_local = threading.local()
+
+
+def _get_gt() -> GeoTessera:
+    """Return a thread-local GeoTessera instance (created once per thread)."""
+    if not hasattr(_thread_local, "gt"):
+        _thread_local.gt = GeoTessera()
+    return _thread_local.gt
 
 logging.basicConfig(
     level=logging.INFO,
@@ -119,15 +130,17 @@ def snap_tessera_to_mask_grid(tessera_tifs: list[Path], mask_path: Path, out_pat
             dst.write(dst_data, band_idx + 1)
 
 
-def fetch_one_mask(mask_path: Path, year: int, out_dir: Path, gt: GeoTessera, skip_existing: bool = True, refid: str | None = None) -> str:
+def fetch_one_mask(mask_path: Path, year: int, out_dir: Path, gt: GeoTessera | None = None, skip_existing: bool = True, refid: str | None = None) -> str:
     """Fetch Tessera embeddings for a single mask and snap to its grid.
 
     Returns: 'exists', 'ok', 'skipped' (no Tessera coverage), or 'error' (exception).
     """
     if refid is None:
         refid = refid_from_mask_path(mask_path)
+    if gt is None:
+        gt = _get_gt()
     snapped_path = out_dir / "snapped_to_mask_grid" / f"{refid}_tessera_{year}_snapped.tif"
-    
+
     if skip_existing and snapped_path.exists():
         logging.info(f"[EXISTS] {refid} -> already processed")
         return "exists"
@@ -172,9 +185,14 @@ def parse_year_arg(year_str: str) -> list[int]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch GeoTessera embeddings for HABLOSS masks")
     parser.add_argument("--out-dir", type=Path, default=Path("data/processed/tessera"), help="Output directory")
-    parser.add_argument("--year", type=str, default="2018-2024", help="Year or year range (e.g., 2024 or 2018-2024)")
+    parser.add_argument("--year", type=str, default="2017-2024", help="Year or year range (e.g., 2024 or 2017-2024)")
     parser.add_argument("--force", action="store_true", help="Reprocess existing files")
+    parser.add_argument("--timeout", type=int, default=30, help="Socket timeout in seconds for tile downloads (default: 30)")
+    parser.add_argument("--workers", type=int, default=4, help="Number of parallel download threads (default: 4)")
     args = parser.parse_args()
+
+    socket.setdefaulttimeout(args.timeout)
+    logging.info(f"Socket timeout: {args.timeout}s  |  workers: {args.workers}")
 
     out_dir: Path = args.out_dir
     years: list[int] = parse_year_arg(args.year)
@@ -195,40 +213,48 @@ def main() -> None:
 
     logging.info(f"Processing {len(mask_pairs)} tiles for years {years[0]}-{years[-1]}...")
     
-    gt = GeoTessera()
     processed: list[str] = []
     existing: list[str] = []
     skipped: list[str] = []
     errored: list[str] = []
 
-    for year in years:
-        logging.info(f"\n{'='*50}")
-        logging.info(f"Processing year {year}")
-        logging.info(f"{'='*50}")
+    # Build the full list of (refid, mask_path, year) tasks
+    tasks = [
+        (refid, mp, year)
+        for year in years
+        for refid, mp in mask_pairs
+    ]
 
-        year_processed = 0
-        year_existing = 0
-        year_skipped = 0
-        year_errored = 0
+    def _fetch(task: tuple) -> tuple[str, str]:
+        refid, mp, year = task
+        result = fetch_one_mask(mp, year=year, out_dir=out_dir, skip_existing=skip_existing, refid=refid)
+        return f"{refid}_{year}", result
 
-        for refid, mp in mask_pairs:
-            result = fetch_one_mask(mp, year=year, out_dir=out_dir, gt=gt, skip_existing=skip_existing, refid=refid)
+    logging.info(f"Starting {len(tasks)} fetch tasks with {args.workers} workers...")
+
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = {pool.submit(_fetch, t): t for t in tasks}
+        year_counts: dict[int, dict] = {
+            y: {"ok": 0, "exists": 0, "skipped": 0, "error": 0} for y in years
+        }
+        for future in as_completed(futures):
+            key, result = future.result()
+            year = int(key.split("_")[-1])
+            year_counts[year][result if result in year_counts[year] else "error"] += 1
             if result == "ok":
-                processed.append(f"{refid}_{year}")
-                year_processed += 1
+                processed.append(key)
             elif result == "exists":
-                existing.append(f"{refid}_{year}")
-                year_existing += 1
+                existing.append(key)
             elif result == "skipped":
-                skipped.append(f"{refid}_{year}")
-                year_skipped += 1
-            else:  # "error"
-                errored.append(f"{refid}_{year}")
-                year_errored += 1
+                skipped.append(key)
+            else:
+                errored.append(key)
 
+    for year in years:
+        c = year_counts[year]
         logging.info(
-            f"Year {year}: {year_processed} new, {year_existing} existing, "
-            f"{year_skipped} skipped, {year_errored} errors"
+            f"Year {year}: {c['ok']} new, {c['exists']} existing, "
+            f"{c['skipped']} skipped, {c['error']} errors"
         )
 
     # Summary
