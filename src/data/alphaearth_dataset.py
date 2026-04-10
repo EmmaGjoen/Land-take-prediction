@@ -4,23 +4,11 @@ import rasterio
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
-
+from file_helpers import find_file_by_prefix
 from src.config import ALPHAEARTH_YEARS, ALPHAEARTH_DIR, MASK_DIR, load_metadata
 
 _BANDS_PER_YEAR = 64
 _EXPECTED_BANDS = len(ALPHAEARTH_YEARS) * _BANDS_PER_YEAR  # 448
-
-def find_file_by_prefix(base_dir: Path, fid: str) -> Path:
-    """
-    Find the unique .tif file in base_dir whose name starts with fid.
-    """
-    candidates = sorted(base_dir.glob(f"{fid}*.tif"))
-    if not candidates:
-        raise FileNotFoundError(f"No file starting with {fid!r} in {base_dir}")
-    if len(candidates) > 1:
-        raise RuntimeError(f"Multiple files starting with {fid!r} in {base_dir}: {candidates}")
-    return candidates[0]
-
 
 class AlphaEarthDataset(Dataset):
     """Loads AlphaEarth annual embeddings paired with land-take segmentation masks and postitions encoding for the embedding timeseries.

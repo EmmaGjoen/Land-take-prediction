@@ -36,7 +36,8 @@ sys.path.append(str(root))
 
 from src.config import MASK_DIR, TESSERA_DIR
 from src.data.tessera_segmentation_dataset import TesseraSegmentationDataset
-from src.data.splits import get_splits, get_ref_ids_from_tessera_dir
+from src.data.splits import get_splits
+from src.data.file_helpers import get_ref_ids_from_tessera_dir
 from src.data.transform import (
     ComposeTS,
     RandomCropTS,

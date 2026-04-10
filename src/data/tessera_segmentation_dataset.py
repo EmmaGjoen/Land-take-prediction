@@ -107,6 +107,7 @@ class TesseraSegmentationDataset(Dataset):
             self.mask_paths[fid] = find_file_by_prefix(MASK_DIR, fid)
             valid_ids.append(fid)
 
+
         if excluded_tessera:
             print(
                 f"[TesseraDataset] Excluded {len(excluded_tessera)} tile(s) "
