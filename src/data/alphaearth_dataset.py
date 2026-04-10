@@ -128,15 +128,15 @@ class AlphaEarthDataset(Dataset):
         emb = emb[start_clip : end_clip + 1]   # shape: (num_valid_years, C, H, W)
         current_T = emb.shape[0]
 
-        # Position encoding
-        # 1-indexed absolute temporal position. 0 is reserved for padding.
-        start_pos = start_clip + 1
-        positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
-
         # To torch tensors
         emb  = torch.from_numpy(emb).float()
         mask = torch.from_numpy(mask).long()
         mask = (mask > 0).long()
+
+        # Position encoding
+        # 1-indexed absolute temporal position. 0 is reserved for padding.
+        start_pos = start_clip + 1
+        positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
     
         # Apply transforms before zero padding
         if self.transform is not None:
