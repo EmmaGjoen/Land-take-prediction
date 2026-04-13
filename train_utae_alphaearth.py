@@ -23,7 +23,8 @@ sys.path.append(str(root))
 
 from src.config import ALPHAEARTH_DIR, MASK_DIR
 from src.data.alphaearth_dataset import AlphaEarthDataset
-from src.data.splits import get_ref_ids_from_directory, get_splits
+from src.data.splits import get_splits
+from src.data.file_helpers import get_ref_ids_from_directory
 from src.data.transform import (
     ComposeTS,
     RandomCropTS,

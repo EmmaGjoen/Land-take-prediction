@@ -28,6 +28,7 @@ figures/
 *.pth
 *.log
 *.npy
+geotessera_cache/
 
 # GeoTessera outputs (in case created in root)
 global_0.1_degree_*/

@@ -11,16 +11,7 @@ from src.config import (
     ACQUISITIONS_PER_YEAR_SENTINEL,
     load_metadata
 )
-
-
-def find_file_by_prefix(base_dir: Path, fid: str) -> Path:
-    """Find the unique .tif file in base_dir whose name starts with fid."""
-    candidates = sorted(list(base_dir.glob(f"{fid}*.tif")))
-    if not candidates:
-        raise FileNotFoundError(f"No file starting with {fid} in {base_dir}")
-    if len(candidates) > 1:
-        raise RuntimeError(f"Multiple files starting with {fid} in {base_dir}: {candidates}")
-    return candidates[0]
+from file_helpers import find_file_by_prefix
 
 
 class SentinelDataset(Dataset):
