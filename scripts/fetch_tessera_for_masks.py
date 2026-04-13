@@ -10,7 +10,7 @@ downloaded and merged with rasterio.merge before snapping to the mask grid.
 Usage:
     python scripts/fetch_tessera_for_masks.py
     python scripts/fetch_tessera_for_masks.py --year 2023
-    python scripts/fetch_tessera_for_masks.py --year 2018-2024
+    python scripts/fetch_tessera_for_masks.py --year 2017-2024
     python scripts/fetch_tessera_for_masks.py --force   # reprocess existing
 """
 from __future__ import annotations
