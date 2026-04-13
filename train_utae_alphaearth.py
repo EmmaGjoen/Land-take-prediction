@@ -331,10 +331,12 @@ def main() -> None:
 
     n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
     fold_label = f"_fold{CONFIG['fold']}" if CONFIG["fold"] is not None else ""
+    group_name = f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}"
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}{fold_label}",
+        name=f"{group_name}{fold_label}",
+        group=group_name,
         config={
             "architecture": CONFIG["architecture"],
             "dataset": train_ds.DATASET_NAME,
