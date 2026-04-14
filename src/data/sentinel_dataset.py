@@ -11,7 +11,7 @@ from src.config import (
     ACQUISITIONS_PER_YEAR_SENTINEL,
     load_metadata
 )
-from file_helpers import find_file_by_prefix
+from src.data.file_helpers import find_file_by_prefix
 
 
 class SentinelDataset(Dataset):
