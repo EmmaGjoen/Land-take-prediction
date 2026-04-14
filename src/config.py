@@ -9,7 +9,7 @@ SENTINEL_DIR    = DATA_ROOT / "Sentinel_v2"
 MASK_DIR        = DATA_ROOT / "Land_take_masks_coarse"
 VHR_DIR         = DATA_ROOT / "VHR_google"
 PLANETSCOPE_DIR = DATA_ROOT / "PlanetScope"
-ALPHAEARTH_DIR  = DATA_ROOT / "AlphaEarth"
+ALPHAEARTH_DIR  = DATA_ROOT / "AlphaEarth_v2"
 METADATA_PATH   = DATA_ROOT / "annotations_metadata_final.csv"
 TESSERA_DIR = ROOT / "data" / "processed" / "tessera" / "snapped_to_mask_grid"
 REPORTS_DIR = ROOT / "reports"
@@ -52,6 +52,6 @@ def load_metadata(skip_na: bool = True) -> dict[str, TileMetadata]:
     return meta
 
 SENTINEL_YEARS = list(range(2016,2025))
-ALPHAEARTH_YEARS = list(range(2018,2025))
+ALPHAEARTH_YEARS = list(range(2017,2025))
 TESSERA_YEARS = list(range(2017,2025))
 ACQUISITIONS_PER_YEAR_SENTINEL = 2

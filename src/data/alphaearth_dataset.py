@@ -4,7 +4,7 @@ import rasterio
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
-from file_helpers import find_file_by_prefix
+from src.data.file_helpers import find_file_by_prefix
 from src.config import ALPHAEARTH_YEARS, ALPHAEARTH_DIR, MASK_DIR, load_metadata
 
 _BANDS_PER_YEAR = 64

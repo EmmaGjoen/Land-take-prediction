@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
-from file_helpers import find_file_by_prefix
+from src.data.file_helpers import find_file_by_prefix
 from src.config import TESSERA_YEARS, MASK_DIR, TESSERA_DIR, load_metadata
 
 class TesseraSegmentationDataset(Dataset):
