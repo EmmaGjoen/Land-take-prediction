@@ -14,11 +14,43 @@ Add --detail for per-fold breakdown.
 """
 
 import argparse
+import os
 import sys
 from collections import defaultdict
+from contextlib import contextmanager
 
 import numpy as np
 import wandb
+
+
+class _Tee:
+    """Write to stdout and a file"""
+    def __init__(self, filepath):
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        self._file = open(filepath, "w", encoding="utf-8")
+        self._stdout = sys.stdout
+
+    def write(self, data):
+        self._stdout.write(data)
+        self._file.write(data)
+
+    def flush(self):
+        self._stdout.flush()
+        self._file.flush()
+
+    def close(self):
+        self._file.close()
+
+
+@contextmanager
+def tee_stdout(filepath):
+    tee = _Tee(filepath)
+    sys.stdout = tee
+    try:
+        yield filepath
+    finally:
+        sys.stdout = tee._stdout
+        tee.close()
 
 
 WANDB_PROJECT = "data_variasjon_utae"
@@ -205,32 +237,47 @@ def main():
     # Shared
     parser.add_argument("--detail", action="store_true",
                         help="Also print per-fold breakdown for each row")
+    parser.add_argument("--output", default=None,
+                        help="Path to save results as a text file. "
+                             "Auto-generated under results/ if not specified.")
     args = parser.parse_args()
 
-    print(f"\nConnecting to WandB project: {WANDB_ENTITY}/{WANDB_PROJECT}")
-    api = wandb.Api()
+    # Build auto output path if not given
+    if args.output is None:
+        if args.vary == "K":
+            n_label = "all" if args.input_years == 0 else args.input_years
+            args.output = f"results/cv_K_{args.dataset}_N{n_label}.txt"
+        else:
+            args.output = f"results/cv_N_{args.dataset}_K{args.k}.txt"
 
-    results = {}
+    with tee_stdout(args.output) as out_path:
+        print(f"\nConnecting to WandB project: {WANDB_ENTITY}/{WANDB_PROJECT}")
+        api = wandb.Api()
 
-    if args.vary == "K":
-        input_years = None if args.input_years == 0 else args.input_years
-        for k in args.k_values:
-            results[k] = fetch_and_aggregate(api, args.dataset, k, input_years,
-                                             args.detail, "K", k)
-        print(f"\nSummary: {args.dataset.upper()}, N={input_years or 'all'} input years, varying K")
-        print_table(results, row_label="K")
+        results = {}
 
-    else:  # vary N
-        n_values = args.n_values if args.n_values is not None else [1, 2, 3, 4]
-        for n_raw in n_values:
-            input_years = None if n_raw == 0 else n_raw
-            results[input_years] = fetch_and_aggregate(api, args.dataset, args.k, input_years,
-                                                       args.detail, "N", input_years)
-        print(f"\nSummary: {args.dataset.upper()}, K={args.k}, varying N")
-        print_table(results, row_label="N")
+        if args.vary == "K":
+            input_years = None if args.input_years == 0 else args.input_years
+            for k in args.k_values:
+                results[k] = fetch_and_aggregate(api, args.dataset, k, input_years,
+                                                 args.detail, "K", k)
+            print(f"\nSummary: {args.dataset.upper()}, N={input_years or 'all'} input years, varying K")
+            print_table(results, row_label="K")
 
-    print("Note: For land-take detection (rare positive class), prioritize F1, Precision,")
-    print("      and Recall. IoU is also informative. Accuracy is misleading on imbalanced data.\n")
+        else:  # vary N
+            n_values = args.n_values if args.n_values is not None else [1, 2, 3, 4]
+            for n_raw in n_values:
+                input_years = None if n_raw == 0 else n_raw
+                results[input_years] = fetch_and_aggregate(api, args.dataset, args.k, input_years,
+                                                           args.detail, "N", input_years)
+            print(f"\nSummary: {args.dataset.upper()}, K={args.k}, varying N")
+            print_table(results, row_label="N")
+
+        print("Note: For land-take detection (rare positive class), prioritize F1, Precision,")
+        print("      and Recall. IoU is also informative. Accuracy is misleading on imbalanced data.\n")
+
+    # This prints after the tee closes, so only goes to the SLURM log — intentional
+    print(f"Results saved to: {out_path}")
 
 
 if __name__ == "__main__":
