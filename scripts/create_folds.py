@@ -1,0 +1,84 @@
+"""Generate geographic 5-fold cross-validation assignments for all tiles.
+
+Coordinates are extracted directly from each tile's REFID and K-means
+clustering on (lon, lat) produces five spatially compact folds, mirroring
+the approach used in the PASTIS benchmark (Garnot & Landrieu, ICCV 2021).
+Spatial separation avoids the performance overestimation (up to 28%) that
+random splits can introduce due to spatial autocorrelation.
+
+Run once before training:
+
+    python scripts/create_folds.py
+
+The assignments are written to ``src/data/geographic_folds.csv`` and should
+be committed to the repository so that all experiments use identical splits.
+"""
+from __future__ import annotations
+
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from src.config import load_metadata
+from src.data.splits import (
+    FOLDS_PATH,
+    create_geographic_folds,
+    get_fold_splits,
+    parse_coords_from_refid,
+    save_folds,
+)
+
+N_FOLDS = 5
+RANDOM_STATE = 42
+
+
+def main() -> None:
+    metadata = load_metadata()
+    refids = sorted(metadata.keys())
+    print(f"Loaded {len(refids)} tiles from metadata.")
+
+    print(f"\nCreating {N_FOLDS} geographic folds via K-means (random_state={RANDOM_STATE})...")
+    fold_assignments = create_geographic_folds(refids, n_folds=N_FOLDS, random_state=RANDOM_STATE)
+
+    save_folds(fold_assignments, FOLDS_PATH)
+    print(f"Saved fold assignments → {FOLDS_PATH}")
+
+    # Per-fold statistics
+    fold_refids: dict[int, list[str]] = defaultdict(list)
+    for refid, fold in fold_assignments.items():
+        fold_refids[fold].append(refid)
+
+    print(f"\n{'─' * 62}")
+    print(f"{'Fold':<6} {'Tiles':<8} {'Lon range':<24} {'Lat range'}")
+    print(f"{'─' * 62}")
+    for fold_id in range(N_FOLDS):
+        members = fold_refids[fold_id]
+        coords = [parse_coords_from_refid(r) for r in members]
+        lons = [c[0] for c in coords]
+        lats = [c[1] for c in coords]
+        print(
+            f"  {fold_id:<4} {len(members):<8}"
+            f"{min(lons):+7.1f} → {max(lons):+6.1f}    "
+            f"{min(lats):5.1f} → {max(lats):.1f}"
+        )
+    print(f"{'─' * 62}")
+
+    # CV split summary
+    print(f"\n5-fold CV splits  (test | val | train):")
+    for test_fold in range(N_FOLDS):
+        train_ids, val_ids, test_ids = get_fold_splits(fold_assignments, test_fold, N_FOLDS)
+        print(
+            f"  fold={test_fold}:  "
+            f"test={len(test_ids):>3}  val={len(val_ids):>3}  train={len(train_ids):>3}"
+        )
+
+    print(
+        f"\nCommit {FOLDS_PATH.name} to the repository to lock in these splits."
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -36,8 +36,8 @@ sys.path.append(str(root))
 
 from src.config import MASK_DIR, TESSERA_DIR
 from src.data.tessera_segmentation_dataset import TesseraSegmentationDataset
-from src.data.splits import get_splits
-from src.data.file_helpers import get_ref_ids_from_tessera_dir
+from src.data.splits import get_splits, load_folds, get_fold_splits
+from src.utils.training import set_random_seeds, get_device
 from src.data.transform import (
     ComposeTS,
     RandomCropTS,
@@ -100,21 +100,6 @@ CONFIG = {
 # HELPERS
 # ============================================================================
 
-def set_random_seeds(seed: int) -> None:
-    """Set all random seeds for full reproducibility."""
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    print(f"All random seeds set to {seed}")
-
-
-def get_device() -> torch.device:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    return device
 
 
 # ============================================================================
@@ -133,6 +118,15 @@ def main() -> None:
         "--input_years", type=int, default=None,
         help="Override CONFIG input_years (N): number of years to show before cutoff",
     )
+    parser.add_argument(
+        "--fold", type=int, default=None, choices=range(5), metavar="0-4",
+        help=(
+            "Geographic fold to use as test set (0-4).  "
+            "Requires src/data/geographic_folds.csv — run scripts/create_folds.py first.  "
+            "Val = (fold+1) %% 5; train = remaining folds.  "
+            "If omitted, falls back to the legacy random 70/15/15 split."
+        ),
+    )
     args = parser.parse_args()
 
     if args.prediction_horizon is not None:
@@ -141,6 +135,7 @@ def main() -> None:
     if args.input_years is not None:
         CONFIG["input_years"] = args.input_years
         print(f"input_years overridden via CLI: N={CONFIG['input_years']}")
+    CONFIG["fold"] = args.fold
 
     torch.use_deterministic_algorithms(True, warn_only=True)
     set_random_seeds(CONFIG["random_seed"])
@@ -153,25 +148,56 @@ def main() -> None:
     print("DATA SPLITS")
     print("=" * 80)
 
-    all_ref_ids = get_ref_ids_from_tessera_dir(TESSERA_DIR)
+    all_ref_ids = TesseraSegmentationDataset.get_ref_ids(TESSERA_DIR)
     print(f"Unique REFIDs found in TESSERA_DIR: {len(all_ref_ids)}")
 
     # Keep only tiles that also have a mask file
     all_ref_ids = [fid for fid in all_ref_ids if list(MASK_DIR.glob(f"{fid}*.tif"))]
     print(f"After filtering to tiles with masks: {len(all_ref_ids)}")
 
-    train_ref_ids, val_ref_ids, test_ref_ids = get_splits(
-        all_ref_ids,
-        train_ratio=CONFIG["train_ratio"],
-        val_ratio=CONFIG["val_ratio"],
-        test_ratio=CONFIG["test_ratio"],
-        random_state=CONFIG["random_seed"],
-    )
+    if CONFIG["fold"] is not None:
+        # Geographic 5-fold CV: load pre-computed fold assignments and filter
+        # to tiles available on disk so all modalities see the same tile pool.
+        fold_assignments = load_folds()
+        fold_assignments = {r: f for r, f in fold_assignments.items() if r in set(all_ref_ids)}
+        train_ref_ids, val_ref_ids, test_ref_ids = get_fold_splits(fold_assignments, CONFIG["fold"])
+        print(f"✓ Geographic 5-fold CV  (test_fold={CONFIG['fold']}, val_fold={(CONFIG['fold']+1)%5})")
+    else:
+        train_ref_ids, val_ref_ids, test_ref_ids = get_splits(
+            all_ref_ids,
+            train_ratio=CONFIG["train_ratio"],
+            val_ratio=CONFIG["val_ratio"],
+            test_ratio=CONFIG["test_ratio"],
+            random_state=CONFIG["random_seed"],
+        )
+        print(f"✓ Legacy random split (random_state={CONFIG['random_seed']})")
 
     print(f"Train tiles: {len(train_ref_ids)} (~{100 * len(train_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Val tiles:   {len(val_ref_ids)} (~{100 * len(val_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Test tiles:  {len(test_ref_ids)} (~{100 * len(test_ref_ids) / len(all_ref_ids):.0f}%)")
-    print(f"✓ Using SHARED splits with U-TAE Sentinel baseline (random_state={CONFIG['random_seed']})")
+
+    # ------------------------------------------------------------------ #
+    # NORMALISATION STATISTICS                                             #
+    # ------------------------------------------------------------------ #
+    print("\n" + "=" * 80)
+    print("NORMALISATION")
+    print("=" * 80)
+
+    # Compute per-channel mean/std from the training set without temporal
+    # masking so that the statistics reflect actual embedding values only.
+    temp_train_ds = TesseraSegmentationDataset(
+        train_ref_ids,
+        transform=ComposeTS([CenterCropTS(CONFIG["chip_size"])]),
+        years=CONFIG["tessera_years"],
+        # No prediction_horizon masking here — stats on real data values only
+        prediction_horizon=0,
+    )
+
+    print("Estimating per-channel mean and std from training data...")
+    mean, std = compute_normalization_stats(temp_train_ds, num_samples=CONFIG["num_samples_for_stats"])
+    print(f"✓ Computed normalisation stats: {len(mean)} channels")
+    print(f"  Mean (first 5): {[f'{m:.4f}' for m in mean[:5]]}")
+    print(f"  Std  (first 5): {[f'{s:.4f}' for s in std[:5]]}")
 
     # ------------------------------------------------------------------ #
     # DATASETS                                                             #
@@ -305,10 +331,13 @@ def main() -> None:
     print("=" * 80)
 
     n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
+    fold_label = f"_fold{CONFIG['fold']}" if CONFIG["fold"] is not None else ""
+    group_name = f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}"
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
-        name=f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}",
+        name=f"{group_name}{fold_label}",
+        group=group_name,
         config={
             "architecture": CONFIG["architecture"],
             "dataset": train_ds.DATASET_NAME,
@@ -317,6 +346,8 @@ def main() -> None:
             "num_timesteps": T,
             "prediction_horizon_K": CONFIG["prediction_horizon"],
             "input_years_N": CONFIG["input_years"],
+            "cv_fold": CONFIG["fold"],
+            "split_strategy": "geographic_5fold_cv" if CONFIG["fold"] is not None else "random_70_15_15",
             "epochs": CONFIG["epochs"],
             "learning_rate": CONFIG["learning_rate"],
             "lr_scheduler": "ReduceLROnPlateau",
@@ -329,13 +360,13 @@ def main() -> None:
             "normalization": CONFIG["normalization"],
             "loss": "focal_loss",
             "focal_gamma": CONFIG["focal_gamma"],
+            "train_tiles": len(train_ref_ids),
+            "val_tiles": len(val_ref_ids),
+            "test_tiles": len(test_ref_ids),
             "train_chips": len(train_ds),
             "val_chips": len(val_ds),
             "test_chips": len(test_ds),
             "random_seed": CONFIG["random_seed"],
-            "train_ratio": CONFIG["train_ratio"],
-            "val_ratio": CONFIG["val_ratio"],
-            "test_ratio": CONFIG["test_ratio"],
         },
     )
     print("✓ WandB initialised")

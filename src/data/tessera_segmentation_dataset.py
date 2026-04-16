@@ -34,8 +34,16 @@ class TesseraSegmentationDataset(Dataset):
     """
 
     DATASET_NAME = "tessera"
-    _BANDS_PER_YEAR = 128
-    _EXPECTED_BANDS = len(TESSERA_YEARS) * _BANDS_PER_YEAR  #1024
+    BANDS_PER_YEAR = 128
+
+    @staticmethod
+    def get_ref_ids(tessera_dir: Path) -> list[str]:
+        """Return sorted unique REFIDs found in tessera_dir.
+
+        Filenames follow the convention ``{refid}_tessera_{year}_snapped.tif``.
+        """
+        files = sorted(tessera_dir.glob("*_tessera_*_snapped.tif"))
+        return sorted({f.name.split("_tessera_")[0] for f in files})
 
     def __init__(
         self,
@@ -51,7 +59,12 @@ class TesseraSegmentationDataset(Dataset):
         self.metadata = load_metadata()
         self.tile_years: dict[str, list[int]] = {}
 
-        # Drop tiles with no metadata or whose cutoff or start year is out of range 
+        # ------------------------------------------------------------------ #
+        # Step 1: keep tiles with at least 1 visible TESSERA year            #
+        # ------------------------------------------------------------------ #
+        # Tiles with fewer visible years than N are kept and zero-padded.
+        # This maximises the dataset while keeping the temporal masking
+        # experiment intact. Only tiles with 0 visible years are excluded.
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
@@ -67,17 +80,15 @@ class TesseraSegmentationDataset(Dataset):
                 continue
 
             cutoff_year = meta.end_year - prediction_horizon
-            tile_years = [y for y in TESSERA_YEARS if meta.start_year <= y <= meta.end_year]
-
-            if not tile_years or cutoff_year not in tile_years:
-                dropped.append(fid)
-                print(f"[TesseraDataset] Excluded {fid}: Valid data window is empty or missing the {cutoff_year} cutoff year.")
-            else:
+            tile_years = [y for y in self.years if meta.start_year <= y <= meta.end_year]
+            if any(y <= cutoff_year for y in tile_years):
                 filtered.append(fid)
-
+            else:
+                dropped.append(fid)
         if dropped:
             print(
-                f"[TesseraDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s). "
+                f"[TesseraSegmentationDataset] K={prediction_horizon}: excluded "
+                f"{len(dropped)} tile(s) with no visible years before cutoff. "
                 f"{len(filtered)} remain."
             )
         self.ids = filtered
