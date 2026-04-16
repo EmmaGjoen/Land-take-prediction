@@ -38,11 +38,11 @@ from src.config import MASK_DIR, TESSERA_DIR
 from src.data.tessera_segmentation_dataset import TesseraSegmentationDataset
 from src.data.splits import get_splits, load_folds, get_fold_splits
 from src.utils.training import set_random_seeds, get_device
+from src.data.file_helpers import get_ref_ids_from_tessera_dir
 from src.data.transform import (
-    compute_normalization_stats,
     ComposeTS,
+    RandomCropTS,
     CenterCropTS,
-    Normalize,
     RandomFlipTS,
     RandomRotate90TS,
 )
@@ -73,9 +73,6 @@ CONFIG = {
     "chip_size": 64,
     "prediction_horizon": 2,    # K: zero timesteps from (endYear − K) onwards
     "input_years": None,        # N: keep startYear + latest N−1 years; None = all
-    # GeoTessera embeddings are available for 2017–2024 only (no 2016 data).
-    # Using ALL_YEARS from config (which may start at 2016) would drop all tiles.
-    "tessera_years": list(range(2017, 2025)),
 
     # Loss
     "focal_gamma": 2.0,         # Focal loss focusing parameter (Lin et al., 2017)
@@ -88,9 +85,7 @@ CONFIG = {
     "batch_size": 4,
     "augment_train": True,      # Random flips + 90° rotations
 
-    # Normalisation — TESSERA embeddings are not raw reflectance, so we
-    # standardise per-channel without the ÷10 000 pre-scaling used for Sentinel.
-    "normalization": "standardize",
+    "normalization": None,
     "num_samples_for_stats": 2000,
 
     # DataLoader
@@ -100,12 +95,6 @@ CONFIG = {
     "wandb_project": "data_variasjon_utae",
     "wandb_entity": "nina_prosjektoppgave",
 }
-
-
-# ============================================================================
-# HELPERS
-# ============================================================================
-
 
 
 # ============================================================================
@@ -181,29 +170,7 @@ def main() -> None:
     print(f"Train tiles: {len(train_ref_ids)} (~{100 * len(train_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Val tiles:   {len(val_ref_ids)} (~{100 * len(val_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Test tiles:  {len(test_ref_ids)} (~{100 * len(test_ref_ids) / len(all_ref_ids):.0f}%)")
-
-    # ------------------------------------------------------------------ #
-    # NORMALISATION STATISTICS                                             #
-    # ------------------------------------------------------------------ #
-    print("\n" + "=" * 80)
-    print("NORMALISATION")
-    print("=" * 80)
-
-    # Compute per-channel mean/std from the training set without temporal
-    # masking so that the statistics reflect actual embedding values only.
-    temp_train_ds = TesseraSegmentationDataset(
-        train_ref_ids,
-        transform=ComposeTS([CenterCropTS(CONFIG["chip_size"])]),
-        years=CONFIG["tessera_years"],
-        # No prediction_horizon masking here — stats on real data values only
-        prediction_horizon=0,
-    )
-
-    print("Estimating per-channel mean and std from training data...")
-    mean, std = compute_normalization_stats(temp_train_ds, num_samples=CONFIG["num_samples_for_stats"])
-    print(f"✓ Computed normalisation stats: {len(mean)} channels")
-    print(f"  Mean (first 5): {[f'{m:.4f}' for m in mean[:5]]}")
-    print(f"  Std  (first 5): {[f'{s:.4f}' for s in std[:5]]}")
+    print(f"✓ Using SHARED splits with U-TAE Sentinel baseline (random_state={CONFIG['random_seed']})")
 
     # ------------------------------------------------------------------ #
     # DATASETS                                                             #
@@ -214,24 +181,20 @@ def main() -> None:
 
     if CONFIG["augment_train"]:
         train_transform = ComposeTS([
-            CenterCropTS(CONFIG["chip_size"]),
+            RandomCropTS(CONFIG["chip_size"]),
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
-            Normalize(mean, std),
         ])
     else:
         train_transform = ComposeTS([
             CenterCropTS(CONFIG["chip_size"]),
-            Normalize(mean, std),
         ])
 
     eval_transform = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),
-        Normalize(mean, std),
     ])
 
     shared_ds_kwargs = dict(
-        years=CONFIG["tessera_years"],
         prediction_horizon=CONFIG["prediction_horizon"],
         input_years=CONFIG["input_years"],
     )
@@ -305,7 +268,7 @@ def main() -> None:
     print(f"✓ U-TAE model created")
     print(f"  Input modality: GeoTessera embeddings (no Sentinel)")
     print(f"  Channels (C):   {C}  (128 per TESSERA year)")
-    print(f"  Timesteps (T):  {T}  (annual, padded to len(tessera_years)={len(CONFIG['tessera_years'])})")
+    print(f"  Timesteps (T):  {T}  (annual)")
     print(f"  Classes:        {CONFIG['num_classes']}")
     print(f"  Input shape:    (B, {T}, {C}, {H}, {W})")
 
@@ -352,7 +315,6 @@ def main() -> None:
             "architecture": CONFIG["architecture"],
             "dataset": train_ds.DATASET_NAME,
             "input_modality": "tessera_only",
-            "tessera_years": CONFIG["tessera_years"],
             "tessera_channels": C,
             "num_timesteps": T,
             "prediction_horizon_K": CONFIG["prediction_horizon"],

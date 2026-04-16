@@ -1,14 +1,4 @@
 """U-TAE trained on AlphaEarth embeddings only (no Sentinel imagery).
-
-This script trains the U-TAE temporal attention model using 64-dim annual
-AlphaEarth embeddings (GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL) as the sole
-input modality.  It is the counterpart to ``train_utae.py`` (Sentinel-only)
-and ``train_utae_tessera.py`` (TESSERA-only) for a direct three-way modality
-comparison in the master's thesis.
-
-Usage::
-
-    python train_utae_alphaearth.py [--prediction_horizon K] [--input_years N]
 """
 
 import os
@@ -31,18 +21,16 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import ALPHAEARTH_DIR, MASK_DIR
-from src.data.alphaearth_segmentation_dataset import (
-    AlphaEarthSegmentationDataset,
-    ALPHAEARTH_YEARS,
-)
+from src.config import ALPHAEARTH_DIR, MASK_DIR, ALPHAEARTH_YEARS
 from src.data.splits import get_splits, load_folds, get_fold_splits
 from src.utils.training import set_random_seeds, get_device
+from src.data.alphaearth_dataset import AlphaEarthDataset
+from src.data.splits import get_splits
+from src.data.file_helpers import get_ref_ids_from_directory
 from src.data.transform import (
-    compute_normalization_stats,
     ComposeTS,
+    RandomCropTS,
     CenterCropTS,
-    Normalize,
     RandomFlipTS,
     RandomRotate90TS,
 )
@@ -71,11 +59,8 @@ CONFIG = {
 
     # Data
     "chip_size": 64,
-    "prediction_horizon": 2,    # K: zero timesteps from (endYear − K) onwards
-    "input_years": None,        # N: keep startYear + latest N−1 years; None = all
-    # AlphaEarth covers 2018–2024 only. Tiles with startYear < 2018 will have
-    # their valid window floored at 2018. With K≥1, endYear=2025 tiles are
-    # safe (cutoff ≤ 2024).
+    "prediction_horizon": 2,        # K: zero timesteps from (end_year - K) onwards per tile
+    "input_years": None,            # N: only show the last N years before the cutoff; None = all available
 
     # Loss
     "focal_gamma": 2.0,
@@ -87,10 +72,7 @@ CONFIG = {
     "lr_factor": 0.5,
     "batch_size": 4,
     "augment_train": True,
-
-    # Normalisation — AlphaEarth embeddings are learned features, not raw
-    # reflectance, so we standardise per-channel only (no ÷10 000 pre-scaling).
-    "normalization": "standardize",
+    "normalization": None,
     "num_samples_for_stats": 2000,
 
     # DataLoader
@@ -100,8 +82,6 @@ CONFIG = {
     "wandb_project": "data_variasjon_utae",
     "wandb_entity": "nina_prosjektoppgave",
 }
-
-
 
 
 # ============================================================================
@@ -139,18 +119,19 @@ def main() -> None:
         print(f"input_years overridden via CLI: N={CONFIG['input_years']}")
     CONFIG["fold"] = args.fold
 
+     # Set random seeds
     torch.use_deterministic_algorithms(True, warn_only=True)
     set_random_seeds(CONFIG["random_seed"])
     device = get_device()
 
-    # ------------------------------------------------------------------ #
-    # DATA SPLITS                                                          #
-    # ------------------------------------------------------------------ #
+    # Get data splits
     print("\n" + "=" * 80)
     print("DATA SPLITS")
     print("=" * 80)
 
+    #CHOOSE CORRECT:
     all_ref_ids = AlphaEarthSegmentationDataset.get_ref_ids(ALPHAEARTH_DIR)
+    all_ref_ids = get_ref_ids_from_directory(ALPHAEARTH_DIR, "*_VEY_Mosaic.tif", "_VEY_Mosaic")
     print(f"Unique REFIDs found in ALPHAEARTH_DIR: {len(all_ref_ids)}")
 
     all_ref_ids = [fid for fid in all_ref_ids if list(MASK_DIR.glob(f"{fid}*.tif"))]
@@ -178,73 +159,46 @@ def main() -> None:
     print(f"Test tiles:  {len(test_ref_ids)} (~{100 * len(test_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"  AlphaEarth years: {ALPHAEARTH_YEARS[0]}–{ALPHAEARTH_YEARS[-1]}")
 
-    # ------------------------------------------------------------------ #
-    # NORMALISATION STATISTICS                                             #
-    # ------------------------------------------------------------------ #
-    print("\n" + "=" * 80)
-    print("NORMALISATION")
-    print("=" * 80)
-
-    temp_train_ds = AlphaEarthSegmentationDataset(
-        train_ref_ids,
-        transform=ComposeTS([CenterCropTS(CONFIG["chip_size"])]),
-        prediction_horizon=0,   # no masking — stats on real embedding values only
-    )
-
-    print("Estimating per-channel mean and std from training data...")
-    mean, std = compute_normalization_stats(temp_train_ds, num_samples=CONFIG["num_samples_for_stats"])
-    print(f"✓ Computed normalisation stats: {len(mean)} channels")
-    print(f"  Mean (first 5): {[f'{m:.4f}' for m in mean[:5]]}")
-    print(f"  Std  (first 5): {[f'{s:.4f}' for s in std[:5]]}")
-
-    # ------------------------------------------------------------------ #
-    # DATASETS                                                             #
-    # ------------------------------------------------------------------ #
+    # Create datasets
     print("\n" + "=" * 80)
     print("DATASETS")
     print("=" * 80)
 
     if CONFIG["augment_train"]:
         train_transform = ComposeTS([
-            CenterCropTS(CONFIG["chip_size"]),
+            RandomCropTS(CONFIG["chip_size"]),
             RandomFlipTS(p_horizontal=0.5, p_vertical=0.5),
             RandomRotate90TS(),
-            Normalize(mean, std),
         ])
     else:
         train_transform = ComposeTS([
             CenterCropTS(CONFIG["chip_size"]),
-            Normalize(mean, std),
         ])
 
     eval_transform = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),
-        Normalize(mean, std),
     ])
-
     shared_ds_kwargs = dict(
         prediction_horizon=CONFIG["prediction_horizon"],
         input_years=CONFIG["input_years"],
     )
 
-    train_ds = AlphaEarthSegmentationDataset(
+    train_ds = AlphaEarthDataset(
         train_ref_ids, transform=train_transform, **shared_ds_kwargs
     )
-    val_ds = AlphaEarthSegmentationDataset(
+    val_ds = AlphaEarthDataset(
         val_ref_ids, transform=eval_transform, **shared_ds_kwargs
     )
-    test_ds = AlphaEarthSegmentationDataset(
+    test_ds = AlphaEarthDataset(
         test_ref_ids, transform=eval_transform, **shared_ds_kwargs
     )
 
-    print(f"✓ Datasets created for {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
+    print(f"Datasets created for {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
     print(f"  Train: {len(train_ds)} chips (augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'})")
     print(f"  Val:   {len(val_ds)} chips")
     print(f"  Test:  {len(test_ds)} chips")
 
-    # ------------------------------------------------------------------ #
-    # DATALOADERS                                                          #
-    # ------------------------------------------------------------------ #
+     # Create dataloaders
     def worker_init_fn(worker_id: int) -> None:
         seed = CONFIG["random_seed"] + worker_id
         np.random.seed(seed)
@@ -275,11 +229,9 @@ def main() -> None:
         generator=torch.Generator().manual_seed(CONFIG["random_seed"]),
     )
 
-    print(f"✓ Dataloaders created (reproducible shuffle seed={CONFIG['random_seed']})")
+    print(f"Dataloaders created (reproducible shuffle seed={CONFIG['random_seed']})")
 
-    # ------------------------------------------------------------------ #
-    # MODEL                                                                #
-    # ------------------------------------------------------------------ #
+    # Build model
     print("\n" + "=" * 80)
     print("MODEL")
     print("=" * 80)
@@ -294,15 +246,14 @@ def main() -> None:
     )
 
     print(f"✓ U-TAE model created")
-    print(f"  Input modality: AlphaEarth embeddings (no Sentinel)")
-    print(f"  Channels (C):   {C}  (64 per AlphaEarth year)")
-    print(f"  Timesteps (T):  {T}  (annual, padded to {len(ALPHAEARTH_YEARS)})")
+    print(f"  Channels (C):   {C}")
+    print(f"  Timesteps (T):  {T}")
     print(f"  Classes:        {CONFIG['num_classes']}")
     print(f"  Input shape:    (B, {T}, {C}, {H}, {W})")
 
+    # Loss, optimizer
     criterion = FocalLoss(gamma=CONFIG["focal_gamma"])
-    print(f"  Loss:           FocalLoss(gamma={CONFIG['focal_gamma']})")
-
+    print(f"Using focal loss with gamma={CONFIG['focal_gamma']}")
     optimizer = Adam(model.parameters(), lr=CONFIG["learning_rate"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
@@ -314,17 +265,16 @@ def main() -> None:
     model = model.to(device)
     criterion = criterion.to(device)
 
-    print("Initialising U-TAE dynamic shapes (FP32 warm-up pass)...")
+    # --- WARM-UP PASS ---
+    print("Initializing U-TAE dynamic shapes to prevent AMP bug.")
     model.eval()
     with torch.no_grad():
         dummy_x   = torch.zeros(1, T, C, H, W, device=device)
         dummy_pos = torch.zeros(1, T, dtype=torch.long, device=device)
         _ = model(dummy_x, batch_positions=dummy_pos)
     print("✓ Warm-up complete")
+     # -----------------------------
 
-    # ------------------------------------------------------------------ #
-    # WANDB                                                                #
-    # ------------------------------------------------------------------ #
     print("\n" + "=" * 80)
     print("WANDB INITIALISATION")
     print("=" * 80)
@@ -340,8 +290,6 @@ def main() -> None:
         config={
             "architecture": CONFIG["architecture"],
             "dataset": train_ds.DATASET_NAME,
-            "input_modality": "alphaearth_only",
-            "alphaearth_years": ALPHAEARTH_YEARS,
             "alphaearth_channels": C,
             "num_timesteps": T,
             "prediction_horizon_K": CONFIG["prediction_horizon"],
@@ -371,14 +319,13 @@ def main() -> None:
     )
     print("✓ WandB initialised")
 
-    # ------------------------------------------------------------------ #
-    # TRAINING LOOP                                                        #
-    # ------------------------------------------------------------------ #
+    # Training loop
     print("\n" + "=" * 80)
     print("TRAINING")
     print("=" * 80)
 
     for epoch in range(CONFIG["epochs"]):
+        # Training
         model.train()
         total_loss = 0.0
         for x, mask, positions in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{CONFIG['epochs']}"):
@@ -396,6 +343,7 @@ def main() -> None:
 
         avg_train_loss = total_loss / len(train_loader)
 
+        # Validation
         model.eval()
         val_loss = 0.0
         sum_tp = sum_fp = sum_tn = sum_fn = 0
@@ -442,9 +390,7 @@ def main() -> None:
             f"Acc={val_metrics['accuracy']:.4f}"
         )
 
-    # ------------------------------------------------------------------ #
-    # TEST EVALUATION                                                      #
-    # ------------------------------------------------------------------ #
+    # Test set evaluation
     print("\n" + "=" * 80)
     print("TEST SET EVALUATION")
     print("=" * 80)

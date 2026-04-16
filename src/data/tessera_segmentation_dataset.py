@@ -1,9 +1,3 @@
-"""Standalone dataset for GeoTessera embeddings with land-take segmentation masks.
-
-Provides (img, mask, positions) triples that mirror the SentinelDataset interface
-so that U-TAE can be trained on TESSERA embeddings alone, without any Sentinel data.
-"""
-
 from pathlib import Path
 from typing import Optional
 
@@ -13,55 +7,44 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
-from src.config import ALL_YEARS, MASK_DIR, TESSERA_DIR, load_metadata
-
+from src.data.file_helpers import find_file_by_prefix
+from src.config import TESSERA_YEARS, MASK_DIR, TESSERA_DIR, load_metadata
 
 class TesseraSegmentationDataset(Dataset):
-    """Load GeoTessera yearly embeddings paired with land-take segmentation masks.
-
-    Each tile has one 128-band GeoTIFF per year located at::
-
-        TESSERA_DIR/{refid}_tessera_{year}_snapped.tif
-
-    Only years that fall within ``[meta.start_year, meta.end_year]`` are loaded
-    per tile; other requested years are ignored.  This mirrors how SentinelDataset
-    clips the Sentinel time series to each tile's VHR window.
+    """Load GeoTessera yearly embeddings paired with land-take segmentation masks postitions encoding for the embedding timeseries.
 
     The loaded years are stacked chronologically to form a ``(T, 128, H, W)``
-    tensor, padded with zeros to ``len(years)`` so that all samples in a batch
+    tensor, padded with zeros to ``len(TESSERA_YEARS)`` so that all samples in a batch
     have the same temporal length.
 
-    **Temporal positions** follow the same convention as SentinelDataset (annual
-    mode): ``position = year - ALL_YEARS[0] + 1``, giving the first year in
-    ``ALL_YEARS`` → 1.  Position 0 is reserved for U-TAE's pad-value masking;
-    zeroed/padded timesteps always receive position 0.
-
-    **Temporal masking** (applied after the transform):
-
-    * Timesteps after ``endYear − K`` are zeroed (prediction horizon).
-    * When ``input_years=N``: ``startYear`` is always visible; years between
-      ``startYear+1`` and ``cutoff − (N−2)`` are zeroed.
-
-    **Tile filtering** at construction time (logged to stdout):
-
-    * Tiles with no metadata or whose cutoff ``(endYear − K)`` is out of range.
-    * Tiles missing any TESSERA file for years within ``[startYear, endYear]``.
-    * Tiles missing a mask file in ``MASK_DIR``.
-
     Args:
-        ids: Reference IDs (tile name prefixes, e.g. ``"R101C117"``).
-        transform: ``ComposeTS``-style callable applied jointly to
-            ``(img, mask)``, e.g. crop → augmentation → normalisation.
-        years: Ordered list of years to consider.  Only the subset that falls
-            within each tile's ``[startYear, endYear]`` window is loaded.
-        prediction_horizon: ``K`` — the model sees data strictly before
-            ``endYear − K``.
-        input_years: ``N`` — keep ``startYear`` plus the latest ``N−1`` years
-            before the cutoff; zero the intervening gap.  ``None`` keeps all.
+        ids: list of REFIDs
+        transform: transforms to apply (flips, rotations)
+        prediction_horizon (K): Number of years before final year in timeseries to cut off.
+            With K=2, the model only sees data up to final year-2, forcing it to
+            predict land take K years in advance.
+        input_years (N): reference year + latest N-1 years before cutoff;
+            None means all years up to cutoff
+
+    **Tile filtering** at construction time (logged):
+
+        * Tiles with no metadata or whose cutoff is out of range.
+        * Tiles missing any any TESSERA file for years within [start_year, end_year]
+        * Tiles with start year before the available TESSERA_YEARS
     """
 
     DATASET_NAME = "tessera"
-    BANDS_PER_YEAR = 128
+    _BANDS_PER_YEAR = 128
+    _EXPECTED_BANDS = len(TESSERA_YEARS) * _BANDS_PER_YEAR  #1024
+
+    @staticmethod
+    def get_ref_ids(tessera_dir: Path) -> list[str]:
+        """Return sorted unique REFIDs found in tessera_dir.
+
+        Filenames follow the convention ``{refid}_tessera_{year}_snapped.tif``.
+        """
+        files = sorted(tessera_dir.glob("*_tessera_*_snapped.tif"))
+        return sorted({f.name.split("_tessera_")[0] for f in files})
 
     @staticmethod
     def get_ref_ids(tessera_dir: Path) -> list[str]:
@@ -76,58 +59,56 @@ class TesseraSegmentationDataset(Dataset):
         self,
         ids: list[str],
         transform,
-        years: Optional[list[int]] = None,
         prediction_horizon: int = 2,
-        input_years: Optional[int] = None,
+        input_years: int | None = None,
     ):
         self.transform = transform
-        self.years = list(years) if years is not None else list(ALL_YEARS)
         self.prediction_horizon = prediction_horizon
         self.input_years = input_years
-        self.max_timesteps = len(self.years)  # pad all samples to this length
-
+        self.max_timesteps = len(TESSERA_YEARS)
         self.metadata = load_metadata()
+        self.tile_years: dict[str, list[int]] = {}
 
-        # ------------------------------------------------------------------ #
-        # Step 1: keep tiles with at least 1 visible TESSERA year            #
-        # ------------------------------------------------------------------ #
-        # Tiles with fewer visible years than N are kept and zero-padded.
-        # This maximises the dataset while keeping the temporal masking
-        # experiment intact. Only tiles with 0 visible years are excluded.
+        # Drop tiles with no metadata or whose cutoff or start year is out of range 
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
+
             if meta is None:
                 dropped.append(fid)
-                print(f"[TesseraSegmentationDataset] No metadata for {fid}, skipping.")
+                print(f"[TesseraDataset] Excluded {fid}: No metadata.")
                 continue
-            cutoff_year = meta.end_year - prediction_horizon
-            tile_years = [y for y in self.years if meta.start_year <= y <= meta.end_year]
-            if any(y <= cutoff_year for y in tile_years):
-                filtered.append(fid)
-            else:
+
+            if meta.start_year < TESSERA_YEARS[0]:
                 dropped.append(fid)
+                print(f"[TesseraDataset] Excluded {fid}: has annotation start year before {TESSERA_YEARS[0]}.")
+                continue
+
+            cutoff_year = meta.end_year - prediction_horizon
+            tile_years = [y for y in TESSERA_YEARS if meta.start_year <= y <= meta.end_year]
+
+            if not tile_years or cutoff_year not in tile_years:
+                dropped.append(fid)
+                print(f"[TesseraDataset] Excluded {fid}: Valid data window is empty or missing the {cutoff_year} cutoff year.")
+            else:
+                filtered.append(fid)
+
         if dropped:
             print(
-                f"[TesseraSegmentationDataset] K={prediction_horizon}: excluded "
-                f"{len(dropped)} tile(s) with no visible years before cutoff. "
+                f"[TesseraDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s). "
                 f"{len(filtered)} remain."
             )
-        ids = filtered
+        self.ids = filtered
 
-        # ------------------------------------------------------------------ #
-        # Step 2: resolve file paths; exclude tiles with missing files        #
-        # ------------------------------------------------------------------ #
+
+        # ADDITIONAL TESSERA FILTERING: Exclude tiles with missing years/files
         self.emb_paths: dict[str, list[Path]] = {}
         self.mask_paths: dict[str, Path] = {}
-        self.tile_years: dict[str, list[int]] = {}
         valid_ids: list[str] = []
         excluded_tessera: dict[str, list[int]] = {}
 
-        for fid in ids:
-            meta = self.metadata[fid]
-            tile_years = [y for y in self.years if meta.start_year <= y <= meta.end_year]
-
+        for fid in self.ids:
+            # Tessera needs to resolve multiple specific files based on tile_years
             missing, paths = [], []
             for year in tile_years:
                 p = TESSERA_DIR / f"{fid}_tessera_{year}_snapped.tif"
@@ -137,29 +118,24 @@ class TesseraSegmentationDataset(Dataset):
                     missing.append(year)
             if missing:
                 excluded_tessera[fid] = missing
-                continue
-
-            mask_candidates = sorted(MASK_DIR.glob(f"{fid}*.tif"))
-            if not mask_candidates:
-                print(f"[TesseraSegmentationDataset] Excluded {fid}: no mask file found.")
+                del self.tile_years[fid]
                 continue
 
             self.emb_paths[fid] = paths
-            self.mask_paths[fid] = mask_candidates[0]
-            self.tile_years[fid] = tile_years
+            self.mask_paths[fid] = find_file_by_prefix(MASK_DIR, fid)
             valid_ids.append(fid)
+
 
         if excluded_tessera:
             print(
-                f"[TesseraSegmentationDataset] Excluded {len(excluded_tessera)} tile(s) "
-                f"missing required TESSERA files."
+                f"[TesseraDataset] Excluded {len(excluded_tessera)} tile(s) "
+                f"missing required TESSERA files:"
             )
             for fid, my in excluded_tessera.items():
                 print(f"  {fid}: missing years {my}")
 
         self.ids = valid_ids
 
-    # ---------------------------------------------------------------------- #
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -167,65 +143,63 @@ class TesseraSegmentationDataset(Dataset):
     def __getitem__(self, idx: int):
         fid = self.ids[idx]
         meta = self.metadata[fid]
-        tile_years = self.tile_years[fid]   # years actually loaded for this tile
+        tile_years = self.tile_years[fid] 
 
-        # ---- Load TESSERA embeddings -------------------------------------- #
+        # Load TESSERA embeddings (Naturally sliced by the tile_years list)
         yearly = []
         for path in self.emb_paths[fid]:
             with rasterio.open(path) as src:
                 arr = src.read()  # (128, H, W)
-            if arr.shape[0] != self.BANDS_PER_YEAR:
+            if arr.shape[0] != self._BANDS_PER_YEAR:
                 raise ValueError(
-                    f"{fid}: expected {self.BANDS_PER_YEAR} bands, "
+                    f"{fid}: expected {self._BANDS_PER_YEAR} bands, "
                     f"got {arr.shape[0]} at {path}"
                 )
             yearly.append(arr)
 
-        img = np.stack(yearly, axis=0)         # (T, 128, H, W)
-        img = torch.from_numpy(img).float()
-        current_T = img.shape[0]
+        emb = np.stack(yearly, axis=0)         # (T, 128, H, W)
+        current_T = emb.shape[0]
 
-        # ---- Load segmentation mask --------------------------------------- #
+        # Load segmentation mask
         with rasterio.open(self.mask_paths[fid]) as src_m:
-            mask_arr = src_m.read(1)           # (H, W)
-        mask = torch.from_numpy(mask_arr).long()
+            mask = src_m.read(1)           # (H, W)
+
+        # To torch tensors
+        emb = torch.from_numpy(emb).float()   
+        mask = torch.from_numpy(mask).long()
         mask = (mask > 0).long()
 
-        # ---- Annual temporal positions ------------------------------------ #
-        # Encoding matches SentinelDataset annual mode:
-        #   position = (year - ALL_YEARS[0]) + 1  →  first year in ALL_YEARS gets 1
-        # Position 0 is reserved for pad-value masking by U-TAE.
-        start_pos = tile_years[0] - ALL_YEARS[0] + 1
+        # Annual temporal positions
+        start_pos = tile_years[0] - TESSERA_YEARS[0] + 1
         positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
 
-        # ---- Apply transform (crop / augmentation / normalisation) -------- #
+        # Apply transform 
         if self.transform is not None:
-            img, mask = self.transform(img, mask)
+            emb, mask = self.transform(emb, mask)
 
-        # ---- Temporal masking --------------------------------------------- #
+        # Temporal masking
         cutoff_year = meta.end_year - self.prediction_horizon
-        cutoff_idx = tile_years.index(cutoff_year)   # guaranteed present (filtered in __init__)
-        n_visible = cutoff_idx + 1                    # steps_per_year = 1 (annual)
+        cutoff_idx = tile_years.index(cutoff_year)
+        n_visible = cutoff_idx + 1
 
-        # Zero all timesteps after the prediction-horizon cutoff
-        img[n_visible:] = 0.0
+        emb[n_visible:] = 0.0
         positions[n_visible:] = 0
 
-        # input_years (N) windowing: keep startYear + latest (N-1) years before cutoff
+        # input_years (N) windowing: keep start_year(tile_years[0]) + latest (N-1) years before cutoff
         if self.input_years is not None:
             window_limit = cutoff_year - (self.input_years - 1)
             for i, y in enumerate(tile_years[:cutoff_idx + 1]):
-                if y != meta.start_year and y <= window_limit:
-                    img[i] = 0.0
+                if y != tile_years[0] and y <= window_limit:
+                    emb[i] = 0.0
                     positions[i] = 0
 
-        # ---- Pad to max_timesteps for consistent batching ----------------- #
+        # Pad to max_timesteps for consistent batching
         if current_T < self.max_timesteps:
             pad_len = self.max_timesteps - current_T
-            img = F.pad(img, (0, 0, 0, 0, 0, 0, 0, pad_len))
+            emb = F.pad(emb, (0, 0, 0, 0, 0, 0, 0, pad_len))
             positions = F.pad(positions, (0, pad_len))
         elif current_T > self.max_timesteps:
-            img = img[:self.max_timesteps]
+            emb = emb[:self.max_timesteps]
             positions = positions[:self.max_timesteps]
 
-        return img, mask, positions
+        return emb, mask, positions
