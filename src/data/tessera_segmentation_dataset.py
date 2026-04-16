@@ -1,6 +1,4 @@
 from pathlib import Path
-from typing import Optional
-
 import numpy as np
 import rasterio
 import torch
@@ -36,15 +34,6 @@ class TesseraSegmentationDataset(Dataset):
     DATASET_NAME = "tessera"
     _BANDS_PER_YEAR = 128
     _EXPECTED_BANDS = len(TESSERA_YEARS) * _BANDS_PER_YEAR  #1024
-
-    @staticmethod
-    def get_ref_ids(tessera_dir: Path) -> list[str]:
-        """Return sorted unique REFIDs found in tessera_dir.
-
-        Filenames follow the convention ``{refid}_tessera_{year}_snapped.tif``.
-        """
-        files = sorted(tessera_dir.glob("*_tessera_*_snapped.tif"))
-        return sorted({f.name.split("_tessera_")[0] for f in files})
 
     @staticmethod
     def get_ref_ids(tessera_dir: Path) -> list[str]:
@@ -92,6 +81,7 @@ class TesseraSegmentationDataset(Dataset):
                 print(f"[TesseraDataset] Excluded {fid}: Valid data window is empty or missing the {cutoff_year} cutoff year.")
             else:
                 filtered.append(fid)
+                self.tile_years = tile_years
 
         if dropped:
             print(

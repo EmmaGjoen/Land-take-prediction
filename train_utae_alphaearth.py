@@ -129,8 +129,6 @@ def main() -> None:
     print("DATA SPLITS")
     print("=" * 80)
 
-    #CHOOSE CORRECT:
-    all_ref_ids = AlphaEarthSegmentationDataset.get_ref_ids(ALPHAEARTH_DIR)
     all_ref_ids = get_ref_ids_from_directory(ALPHAEARTH_DIR, "*_VEY_Mosaic.tif", "_VEY_Mosaic")
     print(f"Unique REFIDs found in ALPHAEARTH_DIR: {len(all_ref_ids)}")
 
