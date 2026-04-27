@@ -11,9 +11,9 @@ VHR_DIR         = DATA_ROOT / "VHR_google"
 PLANETSCOPE_DIR = DATA_ROOT / "PlanetScope"
 ALPHAEARTH_DIR  = DATA_ROOT / "AlphaEarth_v2"
 METADATA_PATH   = DATA_ROOT / "annotations_metadata_final.csv"
-TESSERA_DIR = ROOT / "data" / "processed" / "tessera" / "snapped_to_mask_grid"
-REPORTS_DIR = ROOT / "reports"
-FIGURES_DIR = REPORTS_DIR / "figures"
+TESSERA_DIR     = ROOT / "data" / "processed" / "tessera" / "snapped_to_mask_grid"
+REPORTS_DIR     = ROOT / "reports"
+FIGURES_DIR     = REPORTS_DIR / "figures"
 
 PATCH_SIZE = 256
 BATCH_SIZE = 8
@@ -26,13 +26,12 @@ for d in [REPORTS_DIR, FIGURES_DIR]:
 @dataclass(frozen=True)
 class TileMetadata:
     refid:      str
-    start_year: int   # year of first VHR image → first valid Sentinel year
-    end_year:   int   # year of second VHR image → last valid Sentinel year
+    start_year: int   # year of first VHR image
+    end_year:   int   # year of second VHR image
 
 
 def load_metadata(skip_na: bool = True) -> dict[str, TileMetadata]:
-    """
-    Return {refid: TileMetadata} for all tiles.
+    """Return {refid: TileMetadata} for all tiles.
 
     Parameters
     ----------
@@ -51,7 +50,31 @@ def load_metadata(skip_na: bool = True) -> dict[str, TileMetadata]:
             )
     return meta
 
-SENTINEL_YEARS = list(range(2016,2025))
-ALPHAEARTH_YEARS = list(range(2017,2025))
-TESSERA_YEARS = list(range(2017,2025))
+
+SENTINEL_YEARS             = list(range(2016, 2025))
+ALPHAEARTH_YEARS           = list(range(2017, 2025))
+TESSERA_YEARS              = list(range(2017, 2025))
 ACQUISITIONS_PER_YEAR_SENTINEL = 2
+
+TESSERA_BANDS = 128  # spectral bands per year in each embedding GeoTIFF
+
+
+def tessera_tif_path(refid: str, year: int) -> Path:
+    """Return the canonical path for a snapped Tessera GeoTIFF."""
+    return TESSERA_DIR / f"{refid}_tessera_{year}_snapped.tif"
+
+
+def parse_tessera_filename(filename: str) -> tuple[str, int | None]:
+    """Extract REFID and year from a snapped Tessera filename.
+
+    Expects the naming convention ``{refid}_tessera_{year}_snapped.tif``.
+    Returns ``(refid, year)`` on success, or ``(filename, None)`` if parsing fails.
+    """
+    stem = filename.removesuffix("_snapped.tif")
+    parts = stem.split("_tessera_")
+    if len(parts) == 2:
+        try:
+            return parts[0], int(parts[1])
+        except ValueError:
+            pass
+    return filename, None
