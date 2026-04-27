@@ -1,6 +1,4 @@
 from pathlib import Path
-from typing import Optional
-
 import numpy as np
 import rasterio
 import torch
@@ -59,12 +57,7 @@ class TesseraSegmentationDataset(Dataset):
         self.metadata = load_metadata()
         self.tile_years: dict[str, list[int]] = {}
 
-        # ------------------------------------------------------------------ #
-        # Step 1: keep tiles with at least 1 visible TESSERA year            #
-        # ------------------------------------------------------------------ #
-        # Tiles with fewer visible years than N are kept and zero-padded.
-        # This maximises the dataset while keeping the temporal masking
-        # experiment intact. Only tiles with 0 visible years are excluded.
+        # Drop tiles with no metadata or whose cutoff or start year is out of range 
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
@@ -80,15 +73,18 @@ class TesseraSegmentationDataset(Dataset):
                 continue
 
             cutoff_year = meta.end_year - prediction_horizon
-            tile_years = [y for y in self.years if meta.start_year <= y <= meta.end_year]
-            if any(y <= cutoff_year for y in tile_years):
-                filtered.append(fid)
-            else:
+            tile_years = [y for y in TESSERA_YEARS if meta.start_year <= y <= meta.end_year]
+
+            if not tile_years or cutoff_year not in tile_years:
                 dropped.append(fid)
+                print(f"[TesseraDataset] Excluded {fid}: Valid data window is empty or missing the {cutoff_year} cutoff year.")
+            else:
+                filtered.append(fid)
+                self.tile_years = tile_years
+
         if dropped:
             print(
-                f"[TesseraSegmentationDataset] K={prediction_horizon}: excluded "
-                f"{len(dropped)} tile(s) with no visible years before cutoff. "
+                f"[TesseraDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s). "
                 f"{len(filtered)} remain."
             )
         self.ids = filtered
@@ -130,7 +126,7 @@ class TesseraSegmentationDataset(Dataset):
         self.ids = valid_ids
 
 
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self.ids)
 
     def __getitem__(self, idx: int):

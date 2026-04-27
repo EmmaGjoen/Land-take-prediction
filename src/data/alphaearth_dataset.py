@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import rasterio
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
@@ -99,6 +100,8 @@ class AlphaEarthDataset(Dataset):
             emb = src.read()  # (num_bands, H, W)
         with rasterio.open(self.mask_paths[fid]) as src_m:
             mask = src_m.read(1)  # (H, W)
+
+        emb = np.nan_to_num(emb, nan=0.0, posinf=0.0, neginf=0.0)
 
         C = _BANDS_PER_YEAR
         num_bands, H, W = emb.shape

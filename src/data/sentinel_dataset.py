@@ -50,10 +50,8 @@ class SentinelDataset(Dataset):
         self.steps_per_year = 1 if self.frequency == "annual" else ACQUISITIONS_PER_YEAR_SENTINEL
         self.max_timesteps = len(SENTINEL_YEARS) * self.steps_per_year
 
-        # Keep tiles that have at least 1 visible Sentinel year before the cutoff.
-        # A tile is usable if cutoff_year is within the Sentinel record AND >= startYear.
-        # Tiles with fewer visible years than N are kept and zero-padded — this maximises
-        # the dataset while keeping the temporal masking experiment intact.
+        # Drop tiles with no metadata or whose cutoff or start year is out of range 
+        # Example: end_year=2020 with K=5 → cutoff=2015, which is before our data starts.
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
@@ -74,14 +72,21 @@ class SentinelDataset(Dataset):
                 continue
 
             cutoff_year = meta.end_year - prediction_horizon
-            if cutoff_year in ALL_YEARS and cutoff_year >= meta.start_year:
+            tile_years = [
+                y for y in SENTINEL_YEARS
+                if meta.start_year <= y <= meta.end_year
+            ]
+            if not tile_years or cutoff_year not in tile_years:
+                print(f"[Sentinel] Excluded {fid}: Valid data window is empty or missing the {cutoff_year} cutoff year.")
+                dropped.append(fid)
+            else:
                 filtered.append(fid)
                 self.tile_years[fid] = tile_years
 
         if dropped:
             print(
-                f"[SentinelDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s) "
-                f"with no visible years before cutoff. {len(filtered)} tiles remain."
+                f"[SentinelDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s). "
+                f"{len(filtered)} tiles remain."
             )
         self.ids = filtered
 
@@ -103,7 +108,9 @@ class SentinelDataset(Dataset):
         with rasterio.open(self.img_paths[fid]) as src:
             img = src.read()  # (bands, H, W)
         with rasterio.open(self.mask_paths[fid]) as src_m:
-            mask = src_m.read(1)  # (H, W)
+            mask = src_m.read(1)  # (H, W)sq
+
+        img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
 
         # Warn if Sentinel and mask have different spatial dimensions
         if img.shape[-2:] != mask.shape:
@@ -170,9 +177,9 @@ class SentinelDataset(Dataset):
         cutoff_idx  = tile_years.index(cutoff_year)
         n_visible = (cutoff_idx + 1) * self.steps_per_year
 
-        # Apply prediction horizon (K) masking
-        img[n_visible_timesteps:]       = 0.0
-        positions[n_visible_timesteps:] = 0
+        # Aplly prediction horizon (K) masking
+        img[n_visible:] = 0.0
+        positions[n_visible:] = 0
 
         # Apply input years (N) masking 
         if self.input_years is not None:

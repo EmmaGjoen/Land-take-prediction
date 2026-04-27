@@ -19,8 +19,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --array=0-4
-#SBATCH --output=logs/utae_alphaearth/fold%a_%A.out
-#SBATCH --error=logs/utae_alphaearth/fold%a_%A.err
+#SBATCH --output=logs/utae_alphaearth/%A_fold%a.out
+#SBATCH --error=logs/utae_alphaearth/%A_fold%a.err
 
 echo "=========================================="
 echo "Starting U-TAE + AlphaEarth training job"

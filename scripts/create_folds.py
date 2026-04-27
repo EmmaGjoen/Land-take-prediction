@@ -14,7 +14,7 @@ The assignments are written to ``src/data/geographic_folds.csv`` and should
 be committed to the repository so that all experiments use identical splits.
 """
 from __future__ import annotations
-
+import argparse
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -36,13 +36,39 @@ RANDOM_STATE = 42
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate geographic folds.")
+    parser.add_argument(
+        "--min-start-year", 
+        type=int, 
+        default=None,
+        help="Filter out tiles with a start_year strictly before this value."
+    )
+    parser.add_argument(
+        "--output", 
+        type=Path, 
+        default=FOLDS_PATH,
+        help="Path to save the generated folds CSV. Defaults to FOLDS_PATH."
+    )
+    args = parser.parse_args()
+
     metadata = load_metadata()
-    refids = sorted(metadata.keys())
+    refids = []
+    dropped_count = 0
+    for fid, meta in metadata.items():
+        if args.min_start_year is not None and meta.start_year < args.min_start_year:
+            dropped_count += 1
+            continue
+        refids.append(fid)
+        
+    refids = sorted(refids)
     print(f"Loaded {len(refids)} tiles from metadata.")
+    if args.min_start_year is not None:
+        print(f"Excluded {dropped_count} tiles with start_year < {args.min_start_year}.")
 
     print(f"\nCreating {N_FOLDS} geographic folds via K-means (random_state={RANDOM_STATE})...")
     fold_assignments = create_geographic_folds(refids, n_folds=N_FOLDS, random_state=RANDOM_STATE)
 
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     save_folds(fold_assignments, FOLDS_PATH)
     print(f"Saved fold assignments → {FOLDS_PATH}")
 
