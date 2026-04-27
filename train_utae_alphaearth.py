@@ -37,7 +37,7 @@ root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
 from src.config import ALPHAEARTH_DIR, MASK_DIR, ALPHAEARTH_YEARS
-from src.data.alphaearth_segmentation_dataset import AlphaEarthSegmentationDataset
+from src.data.alphaearth_dataset import AlphaEarthDataset
 from src.data.splits import get_splits, load_folds, get_fold_splits
 from src.utils.training import set_random_seeds, get_device
 from src.data.transform import (
@@ -79,10 +79,11 @@ CONFIG = {
     "focal_gamma": 2.0,         # Focal loss focusing parameter (Lin et al., 2017)
 
     # Training
-    "epochs": 40,
+    "epochs": 75,
     "learning_rate": 1e-3,
     "lr_patience": 7,           # Epochs without val_loss improvement before LR halves
     "lr_factor": 0.5,
+    "early_stopping_patience": 15,  # Epochs without val IoU improvement before stopping
     "batch_size": 4,
     "augment_train": True,      # Random flips + 90 degree rotations
 
@@ -167,7 +168,7 @@ def main() -> None:
     print("DATA SPLITS")
     print("=" * 80)
 
-    all_ref_ids = AlphaEarthSegmentationDataset.get_ref_ids(ALPHAEARTH_DIR)
+    all_ref_ids = AlphaEarthDataset.get_ref_ids(ALPHAEARTH_DIR)
     print(f"Unique REFIDs found in ALPHAEARTH_DIR: {len(all_ref_ids)}")
 
     all_ref_ids = [fid for fid in all_ref_ids if list(MASK_DIR.glob(f"{fid}*.tif"))]
@@ -222,20 +223,20 @@ def main() -> None:
         input_years=CONFIG["input_years"],
     )
 
-    train_ds = AlphaEarthSegmentationDataset(
+    train_ds = AlphaEarthDataset(
         train_ref_ids, transform=train_transform, **shared_ds_kwargs
     )
-    val_ds = AlphaEarthSegmentationDataset(
+    val_ds = AlphaEarthDataset(
         val_ref_ids, transform=eval_transform, **shared_ds_kwargs
     )
-    test_ds = AlphaEarthSegmentationDataset(
+    test_ds = AlphaEarthDataset(
         test_ref_ids, transform=eval_transform, **shared_ds_kwargs
     )
 
     print(f"✓ Datasets created for {CONFIG['chip_size']}x{CONFIG['chip_size']} chips")
-    print(f"  Train: {len(train_ds)} chips (augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'})")
-    print(f"  Val:   {len(val_ds)} chips")
-    print(f"  Test:  {len(test_ds)} chips")
+    print(f"  Train: {len(train_ref_ids)} input → {len(train_ds)} usable ({len(train_ref_ids) - len(train_ds)} excluded) | augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'}")
+    print(f"  Val:   {len(val_ref_ids)} input → {len(val_ds)} usable ({len(val_ref_ids) - len(val_ds)} excluded)")
+    print(f"  Test:  {len(test_ref_ids)} input → {len(test_ds)} usable ({len(test_ref_ids) - len(test_ds)} excluded)")
 
     # ------------------------------------------------------------------ #
     # DATALOADERS                                                          #
@@ -356,12 +357,13 @@ def main() -> None:
             "normalization": CONFIG["normalization"],
             "loss": "focal_loss",
             "focal_gamma": CONFIG["focal_gamma"],
-            "train_tiles": len(train_ref_ids),
-            "val_tiles": len(val_ref_ids),
-            "test_tiles": len(test_ref_ids),
-            "train_chips": len(train_ds),
-            "val_chips": len(val_ds),
-            "test_chips": len(test_ds),
+            "train_tiles_input": len(train_ref_ids),
+            "train_tiles_used": len(train_ds),
+            "val_tiles_input": len(val_ref_ids),
+            "val_tiles_used": len(val_ds),
+            "test_tiles_input": len(test_ref_ids),
+            "test_tiles_used": len(test_ds),
+            "early_stopping_patience": CONFIG["early_stopping_patience"],
             "random_seed": CONFIG["random_seed"],
             "git_commit": git_hash,
         },
@@ -376,6 +378,7 @@ def main() -> None:
     print("=" * 80)
 
     best_val_iou = 0.0
+    epochs_without_improvement = 0
     for epoch in range(CONFIG["epochs"]):
         # ---- Train ---- #
         model.train()
@@ -421,7 +424,10 @@ def main() -> None:
 
         if val_metrics["iou"] > best_val_iou:
             best_val_iou = val_metrics["iou"]
+            epochs_without_improvement = 0
             torch.save(model.state_dict(), checkpoint_dir / "best_model.pth")
+        else:
+            epochs_without_improvement += 1
 
         run.log({
             "epoch": epoch + 1,
@@ -446,6 +452,13 @@ def main() -> None:
             f"Acc={val_metrics['accuracy']:.4f}"
         )
 
+        if epochs_without_improvement >= CONFIG["early_stopping_patience"]:
+            print(
+                f"\nEarly stopping: no val IoU improvement for "
+                f"{CONFIG['early_stopping_patience']} epochs (stopped at epoch {epoch + 1})."
+            )
+            break
+
     torch.save(model.state_dict(), checkpoint_dir / "final_model.pth")
     print(f"\nBest model (val_IoU={best_val_iou:.4f}) -> {checkpoint_dir / 'best_model.pth'}")
     print(f"Final model -> {checkpoint_dir / 'final_model.pth'}")
@@ -457,6 +470,8 @@ def main() -> None:
     print("TEST SET EVALUATION")
     print("=" * 80)
 
+    # Always evaluate with the best checkpoint, not the final epoch
+    model.load_state_dict(torch.load(checkpoint_dir / "best_model.pth", map_location=device))
     model.eval()
     test_loss = 0.0
     sum_tp = sum_fp = sum_tn = sum_fn = 0

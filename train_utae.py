@@ -1,4 +1,6 @@
+import json
 import os
+import subprocess
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
@@ -67,6 +69,7 @@ CONFIG = {
     "learning_rate": 1e-3,
     "lr_patience": 7,               # epochs with no val_loss improvement before LR halves
     "lr_factor": 0.5,               # multiply LR by this when patience runs out
+    "early_stopping_patience": 15,  # Epochs without val IoU improvement before stopping
     "batch_size": 4,
     "augment_train": True,  # Enable spatial augmentation (flips, rotations)
     
@@ -114,9 +117,33 @@ def main():
     # Set random seeds
     torch.use_deterministic_algorithms(True, warn_only=True)
     set_random_seeds(CONFIG["random_seed"])
-    
+
     device = get_device()
-    
+
+    # ------------------------------------------------------------------ #
+    # CHECKPOINT SETUP                                                     #
+    # ------------------------------------------------------------------ #
+    n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
+    fold_label = f"_fold{args.fold}" if args.fold is not None else ""
+    run_name = f"utae_sentinel_K{CONFIG['prediction_horizon']}_N{n_label}{fold_label}"
+    checkpoint_dir = Path("checkpoints") / run_name
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Checkpoints will be saved to: {checkpoint_dir}")
+
+    try:
+        git_hash = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        git_hash = "unknown"
+    print(f"Git commit: {git_hash}")
+
+    config_snapshot = {**CONFIG, "git_commit": git_hash}
+    (checkpoint_dir / "config.json").write_text(
+        json.dumps(config_snapshot, indent=2, default=str)
+    )
+    print(f"Config saved to: {checkpoint_dir / 'config.json'}")
+
     # Get data splits
     print("\n" + "="*80)
     print("DATA SPLITS")
@@ -228,9 +255,9 @@ def main():
     )
     
     print(f"Datasets created for {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
-    print(f"  Train: {len(train_ds)} chips (augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'})")
-    print(f"  Val:   {len(val_ds)} chips")
-    print(f"  Test:  {len(test_ds)} chips")
+    print(f"  Train: {len(train_ref_ids)} input → {len(train_ds)} usable ({len(train_ref_ids) - len(train_ds)} excluded) | augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'}")
+    print(f"  Val:   {len(val_ref_ids)} input → {len(val_ds)} usable ({len(val_ref_ids) - len(val_ds)} excluded)")
+    print(f"  Test:  {len(test_ref_ids)} input → {len(test_ds)} usable ({len(test_ref_ids) - len(test_ds)} excluded)")
     
     # Create dataloaders
     def worker_init_fn(worker_id):
@@ -344,13 +371,15 @@ def main():
             "normalization": CONFIG["normalization"],
             "loss": "focal_loss",
             "focal_gamma": CONFIG["focal_gamma"],
-            "train_tiles": len(train_ref_ids),
-            "val_tiles": len(val_ref_ids),
-            "test_tiles": len(test_ref_ids),
-            "train_chips": len(train_ds),
-            "val_chips": len(val_ds),
-            "test_chips": len(test_ds),
+            "train_tiles_input": len(train_ref_ids),
+            "train_tiles_used": len(train_ds),
+            "val_tiles_input": len(val_ref_ids),
+            "val_tiles_used": len(val_ds),
+            "test_tiles_input": len(test_ref_ids),
+            "test_tiles_used": len(test_ds),
+            "early_stopping_patience": CONFIG["early_stopping_patience"],
             "random_seed": CONFIG["random_seed"],
+            "git_commit": git_hash,
         },
     )
     print("✓ WandB initialized")
@@ -359,7 +388,9 @@ def main():
     print("\n" + "="*80)
     print("TRAINING")
     print("="*80)
-    
+
+    best_val_iou = 0.0
+    epochs_without_improvement = 0
     for epoch in range(CONFIG["epochs"]):
         # Training
         model.train()
@@ -407,6 +438,13 @@ def main():
         scheduler.step(avg_val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
+        if val_metrics["iou"] > best_val_iou:
+            best_val_iou = val_metrics["iou"]
+            epochs_without_improvement = 0
+            torch.save(model.state_dict(), checkpoint_dir / "best_model.pth")
+        else:
+            epochs_without_improvement += 1
+
         # Log to WandB
         run.log({
             "epoch": epoch + 1,
@@ -432,11 +470,22 @@ def main():
             f"Acc={val_metrics['accuracy']:.4f}"
         )
 
-    
-    # Test set evaluation
+        if epochs_without_improvement >= CONFIG["early_stopping_patience"]:
+            print(
+                f"\nEarly stopping: no val IoU improvement for "
+                f"{CONFIG['early_stopping_patience']} epochs (stopped at epoch {epoch + 1})."
+            )
+            break
+
+    torch.save(model.state_dict(), checkpoint_dir / "final_model.pth")
+    print(f"\nBest model (val_IoU={best_val_iou:.4f}) -> {checkpoint_dir / 'best_model.pth'}")
+    print(f"Final model -> {checkpoint_dir / 'final_model.pth'}")
+
+    # Test set evaluation (always use the best checkpoint, not the final epoch)
     print("\n" + "="*80)
     print("TEST SET EVALUATION")
     print("="*80)
+    model.load_state_dict(torch.load(checkpoint_dir / "best_model.pth", map_location=device))
     model.eval()
     test_loss = 0.0
     sum_tp = sum_fp = sum_tn = sum_fn = 0
