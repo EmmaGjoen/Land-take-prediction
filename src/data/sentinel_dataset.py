@@ -68,7 +68,7 @@ class SentinelDataset(Dataset):
 
             if meta.start_year < SENTINEL_YEARS[0]:
                 dropped.append(fid)
-                print(f"[Sentinel] xcluded {fid}: has annotation start year before {SENTINEL_YEARS[0]}.")
+                print(f"[Sentinel] Excluded {fid}: has annotation start year before {SENTINEL_YEARS[0]}.")
                 continue
 
             cutoff_year = meta.end_year - prediction_horizon
