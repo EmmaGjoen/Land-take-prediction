@@ -32,8 +32,7 @@ class TesseraSegmentationDataset(Dataset):
     """
 
     DATASET_NAME = "tessera"
-    _BANDS_PER_YEAR = 128
-    _EXPECTED_BANDS = len(TESSERA_YEARS) * _BANDS_PER_YEAR  #1024
+    BANDS_PER_YEAR = 128
 
     @staticmethod
     def get_ref_ids(tessera_dir: Path) -> list[str]:

@@ -98,6 +98,15 @@ CONFIG = {
 
 
 # ============================================================================
+<<<<<<< HEAD
+=======
+# HELPERS
+# ============================================================================
+
+
+
+# ============================================================================
+>>>>>>> main
 # MAIN
 # ============================================================================
 
@@ -171,6 +180,29 @@ def main() -> None:
     print(f"Val tiles:   {len(val_ref_ids)} (~{100 * len(val_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Test tiles:  {len(test_ref_ids)} (~{100 * len(test_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"✓ Using SHARED splits with U-TAE Sentinel baseline (random_state={CONFIG['random_seed']})")
+
+    # ------------------------------------------------------------------ #
+    # NORMALISATION STATISTICS                                             #
+    # ------------------------------------------------------------------ #
+    print("\n" + "=" * 80)
+    print("NORMALISATION")
+    print("=" * 80)
+
+    # Compute per-channel mean/std from the training set without temporal
+    # masking so that the statistics reflect actual embedding values only.
+    temp_train_ds = TesseraSegmentationDataset(
+        train_ref_ids,
+        transform=ComposeTS([CenterCropTS(CONFIG["chip_size"])]),
+        years=CONFIG["tessera_years"],
+        # No prediction_horizon masking here — stats on real data values only
+        prediction_horizon=0,
+    )
+
+    print("Estimating per-channel mean and std from training data...")
+    mean, std = compute_normalization_stats(temp_train_ds, num_samples=CONFIG["num_samples_for_stats"])
+    print(f"✓ Computed normalisation stats: {len(mean)} channels")
+    print(f"  Mean (first 5): {[f'{m:.4f}' for m in mean[:5]]}")
+    print(f"  Std  (first 5): {[f'{s:.4f}' for s in std[:5]]}")
 
     # ------------------------------------------------------------------ #
     # DATASETS                                                             #

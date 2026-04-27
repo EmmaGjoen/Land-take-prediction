@@ -21,12 +21,22 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
+<<<<<<< HEAD
 from src.config import ALPHAEARTH_DIR, MASK_DIR, ALPHAEARTH_YEARS
 from src.data.splits import get_splits, load_folds, get_fold_splits
 from src.utils.training import set_random_seeds, get_device
 from src.data.alphaearth_dataset import AlphaEarthDataset
 from src.data.splits import get_splits
 from src.data.file_helpers import get_ref_ids_from_directory
+=======
+from src.config import ALPHAEARTH_DIR, MASK_DIR
+from src.data.alphaearth_segmentation_dataset import (
+    AlphaEarthSegmentationDataset,
+    ALPHAEARTH_YEARS,
+)
+from src.data.splits import get_splits, load_folds, get_fold_splits
+from src.utils.training import set_random_seeds, get_device
+>>>>>>> main
 from src.data.transform import (
     ComposeTS,
     RandomCropTS,
@@ -84,6 +94,11 @@ CONFIG = {
 }
 
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> main
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -129,7 +144,11 @@ def main() -> None:
     print("DATA SPLITS")
     print("=" * 80)
 
+<<<<<<< HEAD
     all_ref_ids = get_ref_ids_from_directory(ALPHAEARTH_DIR, "*_VEY_Mosaic.tif", "_VEY_Mosaic")
+=======
+    all_ref_ids = AlphaEarthSegmentationDataset.get_ref_ids(ALPHAEARTH_DIR)
+>>>>>>> main
     print(f"Unique REFIDs found in ALPHAEARTH_DIR: {len(all_ref_ids)}")
 
     all_ref_ids = [fid for fid in all_ref_ids if list(MASK_DIR.glob(f"{fid}*.tif"))]
@@ -157,7 +176,28 @@ def main() -> None:
     print(f"Test tiles:  {len(test_ref_ids)} (~{100 * len(test_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"  AlphaEarth years: {ALPHAEARTH_YEARS[0]}–{ALPHAEARTH_YEARS[-1]}")
 
-    # Create datasets
+    # ------------------------------------------------------------------ #
+    # NORMALISATION STATISTICS                                             #
+    # ------------------------------------------------------------------ #
+    print("\n" + "=" * 80)
+    print("NORMALISATION")
+    print("=" * 80)
+
+    temp_train_ds = AlphaEarthSegmentationDataset(
+        train_ref_ids,
+        transform=ComposeTS([CenterCropTS(CONFIG["chip_size"])]),
+        prediction_horizon=0,   # no masking — stats on real embedding values only
+    )
+
+    print("Estimating per-channel mean and std from training data...")
+    mean, std = compute_normalization_stats(temp_train_ds, num_samples=CONFIG["num_samples_for_stats"])
+    print(f"✓ Computed normalisation stats: {len(mean)} channels")
+    print(f"  Mean (first 5): {[f'{m:.4f}' for m in mean[:5]]}")
+    print(f"  Std  (first 5): {[f'{s:.4f}' for s in std[:5]]}")
+
+    # ------------------------------------------------------------------ #
+    # DATASETS                                                             #
+    # ------------------------------------------------------------------ #
     print("\n" + "=" * 80)
     print("DATASETS")
     print("=" * 80)
