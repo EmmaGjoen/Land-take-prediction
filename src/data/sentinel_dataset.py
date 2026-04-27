@@ -108,7 +108,9 @@ class SentinelDataset(Dataset):
         with rasterio.open(self.img_paths[fid]) as src:
             img = src.read()  # (bands, H, W)
         with rasterio.open(self.mask_paths[fid]) as src_m:
-            mask = src_m.read(1)  # (H, W)
+            mask = src_m.read(1)  # (H, W)sq
+
+        img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
 
         # Warn if Sentinel and mask have different spatial dimensions
         if img.shape[-2:] != mask.shape:
