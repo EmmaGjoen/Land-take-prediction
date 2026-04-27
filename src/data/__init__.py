@@ -21,13 +21,11 @@ __all__ = [
     # Datasets
     "SentinelDataset",
     "TesseraDataset",
-    "FusedDataset",
-    "FusedSentinelTesseraDataset",
+    "AlphaEarthDataset",
     # Splits
     "get_splits",
     # File helpers
     "get_ref_ids_from_directory",
-    "get_ref_ids_from_tessera_dir",
     "find_file_by_prefix",
     # Transforms
     "compute_normalization_stats",

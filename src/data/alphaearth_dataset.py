@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 from src.data.file_helpers import find_file_by_prefix
-from src.config import ALPHAEARTH_YEARS, ALPHAEARTH_DIR, MASK_DIR, load_metadata
+from src.config import ALL_YEARS, ALPHAEARTH_YEARS, ALPHAEARTH_DIR, MASK_DIR, load_metadata
 
 _BANDS_PER_YEAR = 64
 _EXPECTED_BANDS = len(ALPHAEARTH_YEARS) * _BANDS_PER_YEAR  # 448
@@ -31,6 +31,12 @@ class AlphaEarthDataset(Dataset):
     """
     DATASET_NAME = "alphaearth"
 
+    @staticmethod
+    def get_ref_ids(alphaearth_dir: Path) -> list[str]:
+        """Return sorted unique REFIDs found in alphaearth_dir."""
+        files = sorted(alphaearth_dir.glob("*_VEY_Mosaic.tif"))
+        return sorted({f.stem.removesuffix("_VEY_Mosaic") for f in files})
+
     def __init__(
         self,
         ids: list[str],
@@ -45,16 +51,16 @@ class AlphaEarthDataset(Dataset):
         self.metadata = load_metadata()
         self.tile_years: dict[str, list[int]] = {}
 
-        # Drop tiles with no metadata or whose cutoff or start year is out of range 
+        # Drop tiles with no metadata or whose cutoff or start year is out of range
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
-            
+
             if meta is None:
                 dropped.append(fid)
                 print(f"[AlphaEarth] Excluded {fid}: No metadata.")
                 continue
-            
+
             if meta.start_year < ALPHAEARTH_YEARS[0]:
                 dropped.append(fid)
                 print(f"[AlphaEarth] Excluded {fid}: has annotation start year before {ALPHAEARTH_YEARS[0]}.")
@@ -72,7 +78,7 @@ class AlphaEarthDataset(Dataset):
             else:
                 filtered.append(fid)
                 self.tile_years[fid] = tile_years
-        
+
         if dropped:
             print(
                 f"[AlphaEarthDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s). "
@@ -82,7 +88,7 @@ class AlphaEarthDataset(Dataset):
 
         self.emb_paths:  dict[str, Path] = {}
         self.mask_paths: dict[str, Path] = {}
-        
+
         for fid in self.ids:
             self.emb_paths[fid]  = find_file_by_prefix(ALPHAEARTH_DIR, fid)
             self.mask_paths[fid] = find_file_by_prefix(MASK_DIR, fid)
@@ -126,14 +132,15 @@ class AlphaEarthDataset(Dataset):
 
         # Position encoding
         # 1-indexed absolute temporal position. 0 is reserved for padding.
-        start_pos = start_clip + 1
+        # Uses ALL_YEARS[0] as origin so year 2017 = position 2 across all modalities.
+        start_pos = tile_years[0] - ALL_YEARS[0] + 1
         positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
-    
+
         # Apply transforms before zero padding
         if self.transform is not None:
             emb, mask = self.transform(emb, mask)
 
-        # Temporal masking 
+        # Temporal masking
         cutoff_year = meta.end_year - self.prediction_horizon
         cutoff_idx  = tile_years.index(cutoff_year)
         n_visible   = cutoff_idx + 1
