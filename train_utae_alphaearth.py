@@ -1,7 +1,22 @@
 """U-TAE trained on AlphaEarth embeddings only (no Sentinel imagery).
+
+This script trains the U-TAE temporal attention model using 64-band-per-year
+AlphaEarth embeddings as the sole input modality. It is the counterpart to
+``train_utae_tessera.py`` and is intended for a direct modality-comparison
+experiment in the master's thesis.
+
+Usage::
+
+    python train_utae_alphaearth.py [--prediction_horizon K] [--input_years N]
+
+The ``--prediction_horizon`` (K) and ``--input_years`` (N) arguments mirror
+those in ``train_utae_tessera.py`` so that identical temporal settings can be
+applied across both modalities.
 """
 
+import json
 import os
+import subprocess
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
@@ -21,22 +36,10 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-<<<<<<< HEAD
 from src.config import ALPHAEARTH_DIR, MASK_DIR, ALPHAEARTH_YEARS
+from src.data.alphaearth_segmentation_dataset import AlphaEarthSegmentationDataset
 from src.data.splits import get_splits, load_folds, get_fold_splits
 from src.utils.training import set_random_seeds, get_device
-from src.data.alphaearth_dataset import AlphaEarthDataset
-from src.data.splits import get_splits
-from src.data.file_helpers import get_ref_ids_from_directory
-=======
-from src.config import ALPHAEARTH_DIR, MASK_DIR
-from src.data.alphaearth_segmentation_dataset import (
-    AlphaEarthSegmentationDataset,
-    ALPHAEARTH_YEARS,
-)
-from src.data.splits import get_splits, load_folds, get_fold_splits
-from src.utils.training import set_random_seeds, get_device
->>>>>>> main
 from src.data.transform import (
     ComposeTS,
     RandomCropTS,
@@ -69,21 +72,21 @@ CONFIG = {
 
     # Data
     "chip_size": 64,
-    "prediction_horizon": 2,        # K: zero timesteps from (end_year - K) onwards per tile
-    "input_years": None,            # N: only show the last N years before the cutoff; None = all available
+    "prediction_horizon": 2,    # K: zero timesteps from (end_year - K) onwards
+    "input_years": None,        # N: keep start_year + latest N-1 years; None = all
 
     # Loss
-    "focal_gamma": 2.0,
+    "focal_gamma": 2.0,         # Focal loss focusing parameter (Lin et al., 2017)
 
     # Training
     "epochs": 75,
     "learning_rate": 1e-3,
-    "lr_patience": 7,
+    "lr_patience": 7,           # Epochs without val_loss improvement before LR halves
     "lr_factor": 0.5,
     "batch_size": 4,
-    "augment_train": True,
+    "augment_train": True,      # Random flips + 90 degree rotations
+
     "normalization": None,
-    "num_samples_for_stats": 2000,
 
     # DataLoader
     "num_workers": 4,
@@ -94,11 +97,6 @@ CONFIG = {
 }
 
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> main
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -119,7 +117,7 @@ def main() -> None:
         "--fold", type=int, default=None, choices=range(5), metavar="0-4",
         help=(
             "Geographic fold to use as test set (0-4).  "
-            "Requires src/data/geographic_folds.csv — run scripts/create_folds.py first.  "
+            "Requires src/data/geographic_folds.csv; run scripts/create_folds.py first.  "
             "Val = (fold+1) %% 5; train = remaining folds.  "
             "If omitted, falls back to the legacy random 70/15/15 split."
         ),
@@ -134,21 +132,42 @@ def main() -> None:
         print(f"input_years overridden via CLI: N={CONFIG['input_years']}")
     CONFIG["fold"] = args.fold
 
-     # Set random seeds
     torch.use_deterministic_algorithms(True, warn_only=True)
     set_random_seeds(CONFIG["random_seed"])
     device = get_device()
 
-    # Get data splits
+    # ------------------------------------------------------------------ #
+    # CHECKPOINT SETUP                                                     #
+    # ------------------------------------------------------------------ #
+    n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
+    fold_label = f"_fold{args.fold}" if args.fold is not None else ""
+    run_name = f"utae_alphaearth_K{CONFIG['prediction_horizon']}_N{n_label}{fold_label}"
+    checkpoint_dir = Path("checkpoints") / run_name
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Checkpoints will be saved to: {checkpoint_dir}")
+
+    try:
+        git_hash = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        git_hash = "unknown"
+    print(f"Git commit: {git_hash}")
+
+    config_snapshot = {**CONFIG, "git_commit": git_hash}
+    (checkpoint_dir / "config.json").write_text(
+        json.dumps(config_snapshot, indent=2, default=str)
+    )
+    print(f"Config saved to: {checkpoint_dir / 'config.json'}")
+
+    # ------------------------------------------------------------------ #
+    # DATA SPLITS                                                          #
+    # ------------------------------------------------------------------ #
     print("\n" + "=" * 80)
     print("DATA SPLITS")
     print("=" * 80)
 
-<<<<<<< HEAD
-    all_ref_ids = get_ref_ids_from_directory(ALPHAEARTH_DIR, "*_VEY_Mosaic.tif", "_VEY_Mosaic")
-=======
     all_ref_ids = AlphaEarthSegmentationDataset.get_ref_ids(ALPHAEARTH_DIR)
->>>>>>> main
     print(f"Unique REFIDs found in ALPHAEARTH_DIR: {len(all_ref_ids)}")
 
     all_ref_ids = [fid for fid in all_ref_ids if list(MASK_DIR.glob(f"{fid}*.tif"))]
@@ -174,26 +193,7 @@ def main() -> None:
     print(f"Train tiles: {len(train_ref_ids)} (~{100 * len(train_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Val tiles:   {len(val_ref_ids)} (~{100 * len(val_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Test tiles:  {len(test_ref_ids)} (~{100 * len(test_ref_ids) / len(all_ref_ids):.0f}%)")
-    print(f"  AlphaEarth years: {ALPHAEARTH_YEARS[0]}–{ALPHAEARTH_YEARS[-1]}")
-
-    # ------------------------------------------------------------------ #
-    # NORMALISATION STATISTICS                                             #
-    # ------------------------------------------------------------------ #
-    print("\n" + "=" * 80)
-    print("NORMALISATION")
-    print("=" * 80)
-
-    temp_train_ds = AlphaEarthSegmentationDataset(
-        train_ref_ids,
-        transform=ComposeTS([CenterCropTS(CONFIG["chip_size"])]),
-        prediction_horizon=0,   # no masking — stats on real embedding values only
-    )
-
-    print("Estimating per-channel mean and std from training data...")
-    mean, std = compute_normalization_stats(temp_train_ds, num_samples=CONFIG["num_samples_for_stats"])
-    print(f"✓ Computed normalisation stats: {len(mean)} channels")
-    print(f"  Mean (first 5): {[f'{m:.4f}' for m in mean[:5]]}")
-    print(f"  Std  (first 5): {[f'{s:.4f}' for s in std[:5]]}")
+    print(f"  AlphaEarth years: {ALPHAEARTH_YEARS[0]}-{ALPHAEARTH_YEARS[-1]}")
 
     # ------------------------------------------------------------------ #
     # DATASETS                                                             #
@@ -216,27 +216,30 @@ def main() -> None:
     eval_transform = ComposeTS([
         CenterCropTS(CONFIG["chip_size"]),
     ])
+
     shared_ds_kwargs = dict(
         prediction_horizon=CONFIG["prediction_horizon"],
         input_years=CONFIG["input_years"],
     )
 
-    train_ds = AlphaEarthDataset(
+    train_ds = AlphaEarthSegmentationDataset(
         train_ref_ids, transform=train_transform, **shared_ds_kwargs
     )
-    val_ds = AlphaEarthDataset(
+    val_ds = AlphaEarthSegmentationDataset(
         val_ref_ids, transform=eval_transform, **shared_ds_kwargs
     )
-    test_ds = AlphaEarthDataset(
+    test_ds = AlphaEarthSegmentationDataset(
         test_ref_ids, transform=eval_transform, **shared_ds_kwargs
     )
 
-    print(f"Datasets created for {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
+    print(f"✓ Datasets created for {CONFIG['chip_size']}x{CONFIG['chip_size']} chips")
     print(f"  Train: {len(train_ds)} chips (augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'})")
     print(f"  Val:   {len(val_ds)} chips")
     print(f"  Test:  {len(test_ds)} chips")
 
-     # Create dataloaders
+    # ------------------------------------------------------------------ #
+    # DATALOADERS                                                          #
+    # ------------------------------------------------------------------ #
     def worker_init_fn(worker_id: int) -> None:
         seed = CONFIG["random_seed"] + worker_id
         np.random.seed(seed)
@@ -267,9 +270,11 @@ def main() -> None:
         generator=torch.Generator().manual_seed(CONFIG["random_seed"]),
     )
 
-    print(f"Dataloaders created (reproducible shuffle seed={CONFIG['random_seed']})")
+    print(f"✓ Dataloaders created (reproducible shuffle seed={CONFIG['random_seed']})")
 
-    # Build model
+    # ------------------------------------------------------------------ #
+    # MODEL                                                                #
+    # ------------------------------------------------------------------ #
     print("\n" + "=" * 80)
     print("MODEL")
     print("=" * 80)
@@ -284,14 +289,15 @@ def main() -> None:
     )
 
     print(f"✓ U-TAE model created")
-    print(f"  Channels (C):   {C}")
-    print(f"  Timesteps (T):  {T}")
+    print(f"  Input modality: AlphaEarth embeddings (no Sentinel)")
+    print(f"  Channels (C):   {C}  (64 per AlphaEarth year)")
+    print(f"  Timesteps (T):  {T}  (annual)")
     print(f"  Classes:        {CONFIG['num_classes']}")
     print(f"  Input shape:    (B, {T}, {C}, {H}, {W})")
 
-    # Loss, optimizer
     criterion = FocalLoss(gamma=CONFIG["focal_gamma"])
-    print(f"Using focal loss with gamma={CONFIG['focal_gamma']}")
+    print(f"  Loss:           FocalLoss(gamma={CONFIG['focal_gamma']})")
+
     optimizer = Adam(model.parameters(), lr=CONFIG["learning_rate"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
@@ -303,16 +309,19 @@ def main() -> None:
     model = model.to(device)
     criterion = criterion.to(device)
 
-    # --- WARM-UP PASS ---
-    print("Initializing U-TAE dynamic shapes to prevent AMP bug.")
+    # Warm-up pass in FP32 to initialise U-TAE's dynamic shapes before
+    # any AMP context, preventing shape-mismatch bugs on the first forward.
+    print("Initialising U-TAE dynamic shapes (FP32 warm-up pass)...")
     model.eval()
     with torch.no_grad():
-        dummy_x   = torch.zeros(1, T, C, H, W, device=device)
+        dummy_x = torch.zeros(1, T, C, H, W, device=device)
         dummy_pos = torch.zeros(1, T, dtype=torch.long, device=device)
         _ = model(dummy_x, batch_positions=dummy_pos)
     print("✓ Warm-up complete")
-     # -----------------------------
 
+    # ------------------------------------------------------------------ #
+    # WANDB                                                                #
+    # ------------------------------------------------------------------ #
     print("\n" + "=" * 80)
     print("WANDB INITIALISATION")
     print("=" * 80)
@@ -328,6 +337,7 @@ def main() -> None:
         config={
             "architecture": CONFIG["architecture"],
             "dataset": train_ds.DATASET_NAME,
+            "input_modality": "alphaearth_only",
             "alphaearth_channels": C,
             "num_timesteps": T,
             "prediction_horizon_K": CONFIG["prediction_horizon"],
@@ -353,27 +363,31 @@ def main() -> None:
             "val_chips": len(val_ds),
             "test_chips": len(test_ds),
             "random_seed": CONFIG["random_seed"],
+            "git_commit": git_hash,
         },
     )
     print("✓ WandB initialised")
 
-    # Training loop
+    # ------------------------------------------------------------------ #
+    # TRAINING LOOP                                                        #
+    # ------------------------------------------------------------------ #
     print("\n" + "=" * 80)
     print("TRAINING")
     print("=" * 80)
 
+    best_val_iou = 0.0
     for epoch in range(CONFIG["epochs"]):
-        # Training
+        # ---- Train ---- #
         model.train()
         total_loss = 0.0
         for x, mask, positions in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{CONFIG['epochs']}"):
-            x         = x.to(device)
-            mask      = mask.to(device)
+            x = x.to(device)
+            mask = mask.to(device)
             positions = positions.to(device)
 
             optimizer.zero_grad()
             logits = model(x, batch_positions=positions)
-            loss   = criterion(logits, mask)
+            loss = criterion(logits, mask)
             loss.backward()
             optimizer.step()
 
@@ -381,18 +395,18 @@ def main() -> None:
 
         avg_train_loss = total_loss / len(train_loader)
 
-        # Validation
+        # ---- Validate ---- #
         model.eval()
         val_loss = 0.0
         sum_tp = sum_fp = sum_tn = sum_fn = 0
         with torch.no_grad():
             for x, mask, positions in val_loader:
-                x         = x.to(device)
-                mask      = mask.to(device)
+                x = x.to(device)
+                mask = mask.to(device)
                 positions = positions.to(device)
 
                 logits = model(x, batch_positions=positions)
-                loss   = criterion(logits, mask)
+                loss = criterion(logits, mask)
                 val_loss += loss.item()
 
                 pred = torch.argmax(logits, dim=1)
@@ -400,10 +414,14 @@ def main() -> None:
                 sum_tp += tp; sum_fp += fp; sum_tn += tn; sum_fn += fn
 
         avg_val_loss = val_loss / len(val_loader)
-        val_metrics  = compute_metrics_from_confusion(sum_tp, sum_fp, sum_tn, sum_fn)
+        val_metrics = compute_metrics_from_confusion(sum_tp, sum_fp, sum_tn, sum_fn)
 
         scheduler.step(avg_val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
+
+        if val_metrics["iou"] > best_val_iou:
+            best_val_iou = val_metrics["iou"]
+            torch.save(model.state_dict(), checkpoint_dir / "best_model.pth")
 
         run.log({
             "epoch": epoch + 1,
@@ -428,7 +446,13 @@ def main() -> None:
             f"Acc={val_metrics['accuracy']:.4f}"
         )
 
-    # Test set evaluation
+    torch.save(model.state_dict(), checkpoint_dir / "final_model.pth")
+    print(f"\nBest model (val_IoU={best_val_iou:.4f}) -> {checkpoint_dir / 'best_model.pth'}")
+    print(f"Final model -> {checkpoint_dir / 'final_model.pth'}")
+
+    # ------------------------------------------------------------------ #
+    # TEST EVALUATION                                                      #
+    # ------------------------------------------------------------------ #
     print("\n" + "=" * 80)
     print("TEST SET EVALUATION")
     print("=" * 80)
@@ -439,12 +463,12 @@ def main() -> None:
 
     with torch.no_grad():
         for x, mask, positions in test_loader:
-            x         = x.to(device)
-            mask      = mask.to(device)
+            x = x.to(device)
+            mask = mask.to(device)
             positions = positions.to(device)
 
             logits = model(x, batch_positions=positions)
-            loss   = criterion(logits, mask)
+            loss = criterion(logits, mask)
             test_loss += loss.item()
 
             pred = torch.argmax(logits, dim=1)
@@ -452,7 +476,7 @@ def main() -> None:
             sum_tp += tp; sum_fp += fp; sum_tn += tn; sum_fn += fn
 
     avg_test_loss = test_loss / len(test_loader)
-    test_metrics  = compute_metrics_from_confusion(sum_tp, sum_fp, sum_tn, sum_fn)
+    test_metrics = compute_metrics_from_confusion(sum_tp, sum_fp, sum_tn, sum_fn)
 
     print(f"Test results:")
     print(f"  Loss:      {avg_test_loss:.4f}")

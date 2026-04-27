@@ -14,7 +14,9 @@ those in ``train_utae.py`` so that identical temporal settings can be
 applied across both modalities.
 """
 
+import json
 import os
+import subprocess
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
@@ -34,11 +36,10 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import MASK_DIR, TESSERA_DIR
+from src.config import MASK_DIR, TESSERA_DIR, TESSERA_YEARS
 from src.data.tessera_segmentation_dataset import TesseraSegmentationDataset
 from src.data.splits import get_splits, load_folds, get_fold_splits
 from src.utils.training import set_random_seeds, get_device
-from src.data.file_helpers import get_ref_ids_from_tessera_dir
 from src.data.transform import (
     ComposeTS,
     RandomCropTS,
@@ -98,15 +99,6 @@ CONFIG = {
 
 
 # ============================================================================
-<<<<<<< HEAD
-=======
-# HELPERS
-# ============================================================================
-
-
-
-# ============================================================================
->>>>>>> main
 # MAIN
 # ============================================================================
 
@@ -126,7 +118,7 @@ def main() -> None:
         "--fold", type=int, default=None, choices=range(5), metavar="0-4",
         help=(
             "Geographic fold to use as test set (0-4).  "
-            "Requires src/data/geographic_folds.csv — run scripts/create_folds.py first.  "
+            "Requires src/data/geographic_folds.csv; run scripts/create_folds.py first.  "
             "Val = (fold+1) %% 5; train = remaining folds.  "
             "If omitted, falls back to the legacy random 70/15/15 split."
         ),
@@ -144,6 +136,30 @@ def main() -> None:
     torch.use_deterministic_algorithms(True, warn_only=True)
     set_random_seeds(CONFIG["random_seed"])
     device = get_device()
+
+    # ------------------------------------------------------------------ #
+    # CHECKPOINT SETUP                                                     #
+    # ------------------------------------------------------------------ #
+    n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
+    fold_label = f"_fold{args.fold}" if args.fold is not None else ""
+    run_name = f"utae_tessera_K{CONFIG['prediction_horizon']}_N{n_label}{fold_label}"
+    checkpoint_dir = Path("checkpoints") / run_name
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Checkpoints will be saved to: {checkpoint_dir}")
+
+    try:
+        git_hash = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        git_hash = "unknown"
+    print(f"Git commit: {git_hash}")
+
+    config_snapshot = {**CONFIG, "git_commit": git_hash}
+    (checkpoint_dir / "config.json").write_text(
+        json.dumps(config_snapshot, indent=2, default=str)
+    )
+    print(f"Config saved to: {checkpoint_dir / 'config.json'}")
 
     # ------------------------------------------------------------------ #
     # DATA SPLITS                                                          #
@@ -179,30 +195,7 @@ def main() -> None:
     print(f"Train tiles: {len(train_ref_ids)} (~{100 * len(train_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Val tiles:   {len(val_ref_ids)} (~{100 * len(val_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Test tiles:  {len(test_ref_ids)} (~{100 * len(test_ref_ids) / len(all_ref_ids):.0f}%)")
-    print(f"✓ Using SHARED splits with U-TAE Sentinel baseline (random_state={CONFIG['random_seed']})")
-
-    # ------------------------------------------------------------------ #
-    # NORMALISATION STATISTICS                                             #
-    # ------------------------------------------------------------------ #
-    print("\n" + "=" * 80)
-    print("NORMALISATION")
-    print("=" * 80)
-
-    # Compute per-channel mean/std from the training set without temporal
-    # masking so that the statistics reflect actual embedding values only.
-    temp_train_ds = TesseraSegmentationDataset(
-        train_ref_ids,
-        transform=ComposeTS([CenterCropTS(CONFIG["chip_size"])]),
-        years=CONFIG["tessera_years"],
-        # No prediction_horizon masking here — stats on real data values only
-        prediction_horizon=0,
-    )
-
-    print("Estimating per-channel mean and std from training data...")
-    mean, std = compute_normalization_stats(temp_train_ds, num_samples=CONFIG["num_samples_for_stats"])
-    print(f"✓ Computed normalisation stats: {len(mean)} channels")
-    print(f"  Mean (first 5): {[f'{m:.4f}' for m in mean[:5]]}")
-    print(f"  Std  (first 5): {[f'{s:.4f}' for s in std[:5]]}")
+    print(f"  TESSERA years: {TESSERA_YEARS[0]}-{TESSERA_YEARS[-1]}")
 
     # ------------------------------------------------------------------ #
     # DATASETS                                                             #
@@ -372,6 +365,7 @@ def main() -> None:
             "val_chips": len(val_ds),
             "test_chips": len(test_ds),
             "random_seed": CONFIG["random_seed"],
+            "git_commit": git_hash,
         },
     )
     print("✓ WandB initialised")
@@ -383,6 +377,7 @@ def main() -> None:
     print("TRAINING")
     print("=" * 80)
 
+    best_val_iou = 0.0
     for epoch in range(CONFIG["epochs"]):
         # ---- Train ---- #
         model.train()
@@ -426,6 +421,10 @@ def main() -> None:
         scheduler.step(avg_val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
+        if val_metrics["iou"] > best_val_iou:
+            best_val_iou = val_metrics["iou"]
+            torch.save(model.state_dict(), checkpoint_dir / "best_model.pth")
+
         run.log({
             "epoch": epoch + 1,
             "avg_train_loss": avg_train_loss,
@@ -448,6 +447,10 @@ def main() -> None:
             f"Rec={val_metrics['recall']:.4f}  "
             f"Acc={val_metrics['accuracy']:.4f}"
         )
+
+    torch.save(model.state_dict(), checkpoint_dir / "final_model.pth")
+    print(f"\nBest model (val_IoU={best_val_iou:.4f}) -> {checkpoint_dir / 'best_model.pth'}")
+    print(f"Final model -> {checkpoint_dir / 'final_model.pth'}")
 
     # ------------------------------------------------------------------ #
     # TEST EVALUATION                                                      #
