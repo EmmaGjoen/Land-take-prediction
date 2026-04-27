@@ -66,7 +66,7 @@ CONFIG = {
     "focal_gamma": 2.0,
 
     # Training
-    "epochs": 75,
+    "epochs": 40,
     "learning_rate": 1e-3,
     "lr_patience": 7,
     "lr_factor": 0.5,
