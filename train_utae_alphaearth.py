@@ -79,7 +79,7 @@ CONFIG = {
     "focal_gamma": 2.0,         # Focal loss focusing parameter (Lin et al., 2017)
 
     # Training
-    "epochs": 75,
+    "epochs": 40,
     "learning_rate": 1e-3,
     "lr_patience": 7,           # Epochs without val_loss improvement before LR halves
     "lr_factor": 0.5,

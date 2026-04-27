@@ -29,7 +29,7 @@ from sklearn.model_selection import train_test_split
 
 # Path where geographic fold assignments are persisted.
 # Small CSV (~10 KB) committed to the repository for full reproducibility.
-FOLDS_PATH = Path(__file__).parent / "geographic_folds.csv"
+FOLDS_PATH = Path(__file__).parent / "geographic_folds_2017.csv"
 
 
 def get_splits(
