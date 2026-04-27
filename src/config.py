@@ -54,6 +54,7 @@ def load_metadata(skip_na: bool = True) -> dict[str, TileMetadata]:
 SENTINEL_YEARS             = list(range(2016, 2025))
 ALPHAEARTH_YEARS           = list(range(2017, 2025))
 TESSERA_YEARS              = list(range(2017, 2025))
+ALL_YEARS                  = SENTINEL_YEARS            # shared position-encoding origin
 ACQUISITIONS_PER_YEAR_SENTINEL = 2
 
 TESSERA_BANDS = 128  # spectral bands per year in each embedding GeoTIFF

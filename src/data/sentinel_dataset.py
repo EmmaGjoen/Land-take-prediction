@@ -50,15 +50,8 @@ class SentinelDataset(Dataset):
         self.steps_per_year = 1 if self.frequency == "annual" else ACQUISITIONS_PER_YEAR_SENTINEL
         self.max_timesteps = len(SENTINEL_YEARS) * self.steps_per_year
 
-<<<<<<< HEAD
         # Drop tiles with no metadata or whose cutoff or start year is out of range 
         # Example: end_year=2020 with K=5 → cutoff=2015, which is before our data starts.
-=======
-        # Keep tiles that have at least 1 visible Sentinel year before the cutoff.
-        # A tile is usable if cutoff_year is within the Sentinel record AND >= startYear.
-        # Tiles with fewer visible years than N are kept and zero-padded — this maximises
-        # the dataset while keeping the temporal masking experiment intact.
->>>>>>> main
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
@@ -79,7 +72,6 @@ class SentinelDataset(Dataset):
                 continue
 
             cutoff_year = meta.end_year - prediction_horizon
-<<<<<<< HEAD
             tile_years = [
                 y for y in SENTINEL_YEARS
                 if meta.start_year <= y <= meta.end_year
@@ -88,21 +80,13 @@ class SentinelDataset(Dataset):
                 print(f"[Sentinel] Excluded {fid}: Valid data window is empty or missing the {cutoff_year} cutoff year.")
                 dropped.append(fid)
             else:
-=======
-            if cutoff_year in ALL_YEARS and cutoff_year >= meta.start_year:
->>>>>>> main
                 filtered.append(fid)
                 self.tile_years[fid] = tile_years
 
         if dropped:
             print(
-<<<<<<< HEAD
                 f"[SentinelDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s). "
                 f"{len(filtered)} tiles remain."
-=======
-                f"[SentinelDataset] K={prediction_horizon}: excluded {len(dropped)} tile(s) "
-                f"with no visible years before cutoff. {len(filtered)} tiles remain."
->>>>>>> main
             )
         self.ids = filtered
 
@@ -191,15 +175,9 @@ class SentinelDataset(Dataset):
         cutoff_idx  = tile_years.index(cutoff_year)
         n_visible = (cutoff_idx + 1) * self.steps_per_year
 
-<<<<<<< HEAD
         # Aplly prediction horizon (K) masking
         img[n_visible:] = 0.0
         positions[n_visible:] = 0
-=======
-        # Apply prediction horizon (K) masking
-        img[n_visible_timesteps:]       = 0.0
-        positions[n_visible_timesteps:] = 0
->>>>>>> main
 
         # Apply input years (N) masking 
         if self.input_years is not None:
