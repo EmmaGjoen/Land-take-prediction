@@ -32,8 +32,7 @@ class TesseraSegmentationDataset(Dataset):
     """
 
     DATASET_NAME = "tessera"
-    _BANDS_PER_YEAR = 128
-    _EXPECTED_BANDS = len(TESSERA_YEARS) * _BANDS_PER_YEAR  #1024
+    BANDS_PER_YEAR = 128
 
     @staticmethod
     def get_ref_ids(tessera_dir: Path) -> list[str]:
@@ -127,7 +126,7 @@ class TesseraSegmentationDataset(Dataset):
         self.ids = valid_ids
 
 
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self.ids)
 
     def __getitem__(self, idx: int):

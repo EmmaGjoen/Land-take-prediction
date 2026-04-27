@@ -84,10 +84,6 @@ CONFIG = {
 }
 
 
-# ============================================================================
-# MAIN
-# ============================================================================
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Train U-TAE on AlphaEarth embeddings (no Sentinel data)."
@@ -157,7 +153,7 @@ def main() -> None:
     print(f"Test tiles:  {len(test_ref_ids)} (~{100 * len(test_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"  AlphaEarth years: {ALPHAEARTH_YEARS[0]}–{ALPHAEARTH_YEARS[-1]}")
 
-    # Create datasets
+
     print("\n" + "=" * 80)
     print("DATASETS")
     print("=" * 80)
