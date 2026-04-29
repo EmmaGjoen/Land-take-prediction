@@ -105,6 +105,14 @@ def main():
             "If omitted, falls back to the legacy random 70/15/15 split."
         ),
     )
+    parser.add_argument(
+        "--folds-file", type=Path, default=None,
+        help="Path to folds CSV (default: src/data/geographic_folds.csv).",
+    )
+    parser.add_argument(
+        "--tag", type=str, default="",
+        help="Optional tag appended to WandB group name (e.g. 'slicing' or 'modality').",
+    )
     args = parser.parse_args()
     if args.prediction_horizon is not None:
         CONFIG["prediction_horizon"] = args.prediction_horizon
@@ -157,7 +165,7 @@ def main():
     if CONFIG["fold"] is not None:
         # Geographic 5-fold CV: load pre-computed fold assignments and filter
         # to tiles available on disk so all modalities see the same tile pool.
-        fold_assignments = load_folds()
+        fold_assignments = load_folds(path=args.folds_file) if args.folds_file else load_folds()
         fold_assignments = {r: f for r, f in fold_assignments.items() if r in set(all_ref_ids)}
         train_ref_ids, val_ref_ids, test_ref_ids = get_fold_splits(fold_assignments, CONFIG["fold"])
         print(f"✓ Geographic 5-fold CV  (test_fold={CONFIG['fold']}, val_fold={(CONFIG['fold']+1)%5})")
@@ -344,7 +352,8 @@ def main():
     print("="*80)
     n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
     fold_label = f"_fold{CONFIG['fold']}" if CONFIG["fold"] is not None else ""
-    group_name = f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}"
+    tag_suffix = f"_{args.tag}" if args.tag else ""
+    group_name = f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}{tag_suffix}"
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
@@ -354,6 +363,7 @@ def main():
             "architecture": CONFIG["architecture"],
             "dataset": train_ds.DATASET_NAME,
             "input_modality": "sentinel_only",
+            "experiment_tag": args.tag or None,
             "num_timesteps": T,
             "prediction_horizon_K": CONFIG["prediction_horizon"],
             "input_years_N": CONFIG["input_years"],
