@@ -69,8 +69,8 @@ def main() -> None:
     fold_assignments = create_geographic_folds(refids, n_folds=N_FOLDS, random_state=RANDOM_STATE)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    save_folds(fold_assignments, FOLDS_PATH)
-    print(f"Saved fold assignments → {FOLDS_PATH}")
+    save_folds(fold_assignments, args.output)
+    print(f"Saved fold assignments → {args.output}")
 
     # Per-fold statistics
     fold_refids: dict[int, list[str]] = defaultdict(list)
