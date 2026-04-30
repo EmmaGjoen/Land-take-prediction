@@ -535,6 +535,11 @@ def main():
         "test_precision": test_metrics['precision'],
         "test_recall": test_metrics['recall'],
         "test_accuracy": test_metrics['accuracy'],
+        # Raw confusion matrix totals, used for pooled aggregation across folds
+        "test_tp": int(sum_tp),
+        "test_fp": int(sum_fp),
+        "test_tn": int(sum_tn),
+        "test_fn": int(sum_fn),
     })
     
     # Log combined masks from multiple test batches
