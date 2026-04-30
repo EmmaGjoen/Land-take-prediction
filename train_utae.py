@@ -22,7 +22,8 @@ sys.path.append(str(root))
 
 from src.config import SENTINEL_DIR, MASK_DIR
 from src.data.sentinel_dataset import SentinelDataset
-from src.data.splits import get_splits, get_ref_ids_from_directory, load_folds, get_fold_splits
+from src.data.file_helpers import get_ref_ids_from_directory
+from src.data.splits import get_splits, load_folds, get_fold_splits
 from src.utils.training import set_random_seeds, get_device
 from src.data.transform import (
     compute_normalization_stats,
