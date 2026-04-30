@@ -1,3 +1,4 @@
+import bisect
 from pathlib import Path
 
 import rasterio
@@ -142,15 +143,14 @@ class AlphaEarthDataset(Dataset):
 
         # Temporal masking
         cutoff_year = meta.end_year - self.prediction_horizon
-        cutoff_idx  = tile_years.index(cutoff_year)
-        n_visible   = cutoff_idx + 1
+        n_visible = bisect.bisect_right(tile_years, cutoff_year)
 
         emb[n_visible:] = 0.0
         positions[n_visible:] = 0
 
         if self.input_years is not None:
             window_limit = cutoff_year - (self.input_years - 1)
-            for i, y in enumerate(tile_years[:cutoff_idx + 1]):
+            for i, y in enumerate(tile_years[:n_visible]):
                 if y != tile_years[0] and y <= window_limit:
                     emb[i] = 0.0
                     positions[i] = 0

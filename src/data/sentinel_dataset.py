@@ -1,3 +1,4 @@
+import bisect
 from pathlib import Path
 import numpy as np
 import rasterio
@@ -172,20 +173,20 @@ class SentinelDataset(Dataset):
         # Zero out timesteps after cutoff year (end_year - K) so U-TAE ignores them.
         # The model only sees data up to the cutoff, forcing it to predict K years ahead.
         cutoff_year = meta.end_year - self.prediction_horizon
-        cutoff_idx  = tile_years.index(cutoff_year)
-        n_visible = (cutoff_idx + 1) * self.steps_per_year
+        n_visible_years = bisect.bisect_right(tile_years, cutoff_year)
+        n_visible = n_visible_years * self.steps_per_year
 
-        # Aplly prediction horizon (K) masking
+        # Apply prediction horizon (K) masking
         img[n_visible:] = 0.0
         positions[n_visible:] = 0
 
-        # Apply input years (N) masking 
+        # Apply input years (N) masking
         if self.input_years is not None:
             # N total years: the start_year, plus the (N-1) latest years ending at cutoff
             window_limit = cutoff_year - (self.input_years - 1)
-            
+
             # Iterate only through the years that survived the cutoff
-            for i, y in enumerate(tile_years[:cutoff_idx + 1]):
+            for i, y in enumerate(tile_years[:n_visible_years]):
                 # If the year is NOT the start year of the tile AND falls before our N-1 window, mask it
                 if y != tile_years[0] and y <= window_limit:
                     t_start = i * self.steps_per_year
