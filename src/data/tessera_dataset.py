@@ -15,25 +15,21 @@ from src.config import (
 
 
 class TesseraDataset(Dataset):
-    """Load GeoTessera yearly embeddings paired with land-take segmentation masks.
+    """GeoTessera yearly embeddings paired with land-take segmentation masks.
 
-    The loaded years are stacked chronologically to form a (T, 128, H, W) tensor,
-    then padded with zeros to len(TESSERA_YEARS) so all samples in a batch share
-    the same temporal length.
+    Years are stacked into a (T, 128, H, W) tensor and zero-padded to
+    len(TESSERA_YEARS) so all samples in a batch have the same length.
 
     Args:
         ids: list of REFIDs.
-        transform: spatial transforms applied jointly to (emb, mask).
-        prediction_horizon (K): zero timesteps from end_year-K onwards, forcing
-            the model to predict land take K years ahead.
-        input_years (N): keep start_year plus the latest N-1 years before the
-            cutoff; None keeps all visible years.
+        transform: spatial transforms applied to (emb, mask).
+        prediction_horizon (K): zero out the last K years so the model
+            predicts K years ahead.
+        input_years (N): keep start_year + latest N-1 years before cutoff.
+            None = all visible years.
 
-    Tile filtering at construction time (logged to stdout):
-        - Tiles with no metadata or whose start_year predates TESSERA_YEARS.
-        - Tiles with no visible years before the cutoff.
-        - Tiles missing any required TESSERA file.
-        - Tiles missing a mask file.
+    Tiles are filtered at init (logged to stdout) if they lack metadata,
+    have start_year before TESSERA_YEARS, miss embedding files, or miss a mask.
     """
 
     DATASET_NAME = "tessera"
@@ -171,8 +167,8 @@ class TesseraDataset(Dataset):
         mask = torch.from_numpy(mask).long()
         mask = (mask > 0).long()
 
-        # Annual temporal positions; position 0 reserved for padding.
-        # ALL_YEARS[0] is the shared origin across all modalities (year 2016 -> pos 1).
+        # Position encoding: 1-indexed, shared origin ALL_YEARS[0]=2016.
+        # Position 0 = padding (ignored by U-TAE attention).
         start_pos = tile_years[0] - ALL_YEARS[0] + 1
         positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
 

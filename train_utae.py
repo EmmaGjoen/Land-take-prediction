@@ -101,7 +101,7 @@ def main():
         "--fold", type=int, default=None, choices=range(5), metavar="0-4",
         help=(
             "Geographic fold to use as test set (0-4).  "
-            "Requires src/data/geographic_folds.csv — run scripts/create_folds.py first.  "
+            "Requires src/data/geographic_folds.csv, run scripts/create_folds.py first.  "
             "Val = (fold+1) %% 5; train = remaining folds.  "
             "If omitted, falls back to the legacy random 70/15/15 split."
         ),
@@ -159,13 +159,12 @@ def main():
     print("="*80)
     all_ref_ids = get_ref_ids_from_directory(SENTINEL_DIR)
     print(f"Total reference IDs found in Sentinel dir: {len(all_ref_ids)}")
-    # Keep only tiles that also have a mask - new coarse masks don't cover all old Sentinel tiles
+    # Keep only tiles that also have a mask
     all_ref_ids = [fid for fid in all_ref_ids if list(MASK_DIR.glob(f"{fid}*.tif"))]
     print(f"After filtering to tiles with masks: {len(all_ref_ids)}")
 
     if CONFIG["fold"] is not None:
-        # Geographic 5-fold CV: load pre-computed fold assignments and filter
-        # to tiles available on disk so all modalities see the same tile pool.
+        # Geographic 5-fold CV: filter folds to tiles on disk
         fold_assignments = load_folds(path=args.folds_file) if args.folds_file else load_folds()
         fold_assignments = {r: f for r, f in fold_assignments.items() if r in set(all_ref_ids)}
         train_ref_ids, val_ref_ids, test_ref_ids = get_fold_splits(fold_assignments, CONFIG["fold"])
@@ -335,18 +334,14 @@ def main():
     print("\n" + "="*80)
     model = model.to(device)
     
-    # --- WARM-UP PASS ---
-    print("Initializing U-TAE dynamic shapes to prevent AMP bug.")
-    model.eval() # Set to eval to avoid affecting BatchNorm
+    # Warm-up pass in FP32 to init U-TAE dynamic shapes before any AMP context
+    print("Initializing U-TAE dynamic shapes (FP32 warm-up)...")
+    model.eval()
     with torch.no_grad():
-        # Create a single FP32 dummy batch matching your chip dimensions
         dummy_x = torch.zeros(1, T, C, H, W, device=device)
         dummy_pos = torch.zeros(1, T, dtype=torch.long, device=device)
-        
-        # Run it through the model OUTSIDE of the autocast context
         _ = model(dummy_x, batch_positions=dummy_pos)
-    print("✓ U-TAE shapes initialized safely in FP32")
-    # -----------------------------
+    print("✓ Warm-up complete")
 
 
     print("WANDB INITIALIZATION")
@@ -445,7 +440,7 @@ def main():
         avg_val_loss = val_loss / len(val_loader)
         val_metrics = compute_metrics_from_confusion(sum_tp, sum_fp, sum_tn, sum_fn)
 
-        # Step LR scheduler - halves LR if val_loss hasn't improved for lr_patience epochs
+        # Halve LR if val_loss hasn't improved for lr_patience epochs
         scheduler.step(avg_val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
@@ -492,7 +487,7 @@ def main():
     print(f"\nBest model (val_IoU={best_val_iou:.4f}) -> {checkpoint_dir / 'best_model.pth'}")
     print(f"Final model -> {checkpoint_dir / 'final_model.pth'}")
 
-    # Test set evaluation (always use the best checkpoint, not the final epoch)
+    # Test evaluation using the best checkpoint
     print("\n" + "="*80)
     print("TEST SET EVALUATION")
     print("="*80)

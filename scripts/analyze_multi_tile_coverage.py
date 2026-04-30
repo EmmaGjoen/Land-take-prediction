@@ -192,7 +192,7 @@ def write_summary(records: list[dict]) -> Path:
     lines.append(f"| Total masks | {total} | 100% |\n")
     lines.append(f"| Single-tile (always complete) | {len(single)} | {len(single)/total*100:.1f}% |\n")
     lines.append(f"| Multi-tile (previously incomplete) | {len(multi)} | {len(multi)/total*100:.1f}% |\n")
-    lines.append(f"| — with snapped embeddings present | {len(multi_with_emb)} | {len(multi_with_emb)/total*100:.1f}% |\n")
+    lines.append(f"|   with snapped embeddings present | {len(multi_with_emb)} | {len(multi_with_emb)/total*100:.1f}% |\n")
     lines.append("\n")
 
     if multi:

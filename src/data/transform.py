@@ -8,9 +8,7 @@ def compute_normalization_stats(
     dataset,
     num_samples: int = 2000,
 ) -> Tuple[list[float], list[float]]:
-    """
-    Compute mathematically exact global per-channel mean and std.
-    """
+    """Compute global per-channel mean and std from a dataset subset."""
 
     num_samples = min(num_samples, len(dataset))
     indices = random.sample(range(len(dataset)), num_samples)
@@ -58,20 +56,10 @@ def compute_normalization_stats(
 
 
 class Normalize:
-    """
-    Apply per-channel standardization using precomputed mean and std.
-    
-    This transform should be applied AFTER scaling (e.g., dividing by 10000).
-    Use the same mean/std values computed from the training set for all splits.
-    
-    Args:
-        mean: Sequence of per-channel mean values
-        std: Sequence of per-channel std values
-        
-    Example:
-        >>> # For flattened Sentinel data (B, C, H, W)
-        >>> transform = Normalize(mean=train_mean, std=train_std)
-        >>> img_normalized, mask = transform(img_scaled, mask)
+    """Per-channel standardization using precomputed mean and std.
+
+    Apply after scaling (e.g. dividing by 10000). Use the same mean/std
+    from the training set for all splits.
     """
     def __init__(self, mean: Sequence[float], std: Sequence[float]):
         self.mean = torch.tensor(mean, dtype=torch.float32)
@@ -96,7 +84,7 @@ class Normalize:
 
 
 class RandomCropTS:
-    """returns cropped image + mask with default size H,W => 64,64"""
+    """Random crop of image + mask to a fixed size (default 64x64)."""
 
     def __init__(self, size=64):
         self.size = size
@@ -115,14 +103,7 @@ class RandomCropTS:
         return x, mask 
     
 class CenterCropTS:
-    """Center crop (or pad) time series data to a fixed size.
-    
-    Handles variable-sized inputs by:
-    - Padding with zeros if smaller than target size
-    - Center cropping if larger than target size
-    
-    Works deterministically on all splits for reproducibility.
-    """
+    """Center crop (or zero-pad) time series to a fixed size. Deterministic."""
     def __init__(self, size):
         self.size = size 
     def __call__(self, x, mask):
@@ -136,7 +117,7 @@ class CenterCropTS:
         if H > s or W > s:
             x = x[:, :, (H - s) // 2:(H - s) // 2 + s, (W - s) // 2:(W - s) // 2 + s]
 
-        # --- mask: apply same logic independently so mismatched tile sizes don't silently truncate ---
+        # Same crop/pad logic for the mask
         mH, mW = mask.shape
         if mH < s or mW < s:
             mask = F.pad(mask, (0, max(0, s - mW), 0, max(0, s - mH)), mode="constant", value=0)
@@ -167,10 +148,7 @@ class ComposeTS:
 
 
 class RandomFlipTS:
-    """Random horizontal and vertical flips for time series data (T, C, H, W).
-    Applies the same flip to all timesteps and the mask.
-    Works with 64x64 pre-cropped chips.
-    """
+    """Random horizontal/vertical flips for (T, C, H, W) time series + mask."""
     def __init__(self, p_horizontal=0.5, p_vertical=0.5):
         self.p_horizontal = p_horizontal
         self.p_vertical = p_vertical
@@ -189,10 +167,7 @@ class RandomFlipTS:
 
 
 class RandomRotate90TS:
-    """Random 90-degree rotations for time series data (T, C, H, W).
-    Applies the same rotation to all timesteps and the mask.
-    Works with 64x64 pre-cropped chips on both CPU and GPU.
-    """
+    """Random 90-degree rotation for (T, C, H, W) time series + mask."""
     def __init__(self):
         pass
     

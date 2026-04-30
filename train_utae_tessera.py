@@ -1,17 +1,7 @@
-"""U-TAE trained on GeoTessera embeddings only (no Sentinel imagery).
+"""Train U-TAE on GeoTessera embeddings (128-band, no Sentinel).
 
-This script trains the U-TAE temporal attention model using 128-band
-GeoTessera embeddings as the sole input modality.  It is the counterpart
-to ``train_utae.py`` (Sentinel-only) and is intended for a direct
-modality-comparison experiment in the master's thesis.
-
-Usage::
-
-    python train_utae_tessera.py [--prediction_horizon K] [--input_years N]
-
-The ``--prediction_horizon`` (K) and ``--input_years`` (N) arguments mirror
-those in ``train_utae.py`` so that identical temporal settings can be
-applied across both modalities.
+Counterpart to train_utae.py for the modality comparison experiment.
+Same --prediction_horizon (K) and --input_years (N) interface.
 """
 
 import json
@@ -72,8 +62,8 @@ CONFIG = {
 
     # Data
     "chip_size": 64,
-    "prediction_horizon": 2,    # K: zero timesteps from (endYear − K) onwards
-    "input_years": None,        # N: keep startYear + latest N−1 years; None = all
+    "prediction_horizon": 2,    # K: zero out the last K years
+    "input_years": None,        # N: keep start_year + latest N-1 years; None = all
 
     # Loss
     "focal_gamma": 2.0,         # Focal loss focusing parameter (Lin et al., 2017)
@@ -185,8 +175,7 @@ def main() -> None:
     print(f"After filtering to tiles with masks: {len(all_ref_ids)}")
 
     if CONFIG["fold"] is not None:
-        # Geographic 5-fold CV: load pre-computed fold assignments and filter
-        # to tiles available on disk so all modalities see the same tile pool.
+        # Geographic 5-fold CV: filter folds to tiles on disk
         fold_assignments = load_folds(path=args.folds_file) if args.folds_file else load_folds()
         fold_assignments = {r: f for r, f in fold_assignments.items() if r in set(all_ref_ids)}
         train_ref_ids, val_ref_ids, test_ref_ids = get_fold_splits(fold_assignments, CONFIG["fold"])
@@ -320,9 +309,8 @@ def main() -> None:
     model = model.to(device)
     criterion = criterion.to(device)
 
-    # Warm-up pass in FP32 to initialise U-TAE's dynamic shapes before
-    # any AMP context, preventing shape-mismatch bugs on the first forward.
-    print("Initialising U-TAE dynamic shapes (FP32 warm-up pass)...")
+    # Warm-up pass in FP32 to init U-TAE dynamic shapes before any AMP context
+    print("Initializing U-TAE dynamic shapes (FP32 warm-up)...")
     model.eval()
     with torch.no_grad():
         dummy_x = torch.zeros(1, T, C, H, W, device=device)
@@ -482,7 +470,7 @@ def main() -> None:
     print("TEST SET EVALUATION")
     print("=" * 80)
 
-    # Always evaluate with the best checkpoint, not the final epoch
+    # Test evaluation using the best checkpoint
     model.load_state_dict(torch.load(checkpoint_dir / "best_model.pth", map_location=device))
     model.eval()
     test_loss = 0.0

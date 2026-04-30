@@ -42,7 +42,7 @@ echo "WANDB_API_KEY=your_key_here" > .env
 
 ### 4. Data paths
 
-`src/config.py` resolves all paths relative to the project root — no edits needed.
+`src/config.py` resolves all paths relative to the project root, no edits needed.
 After transferring data (see below), the layout should be:
 
 ```

@@ -13,22 +13,18 @@ _BANDS_PER_YEAR = 64
 _EXPECTED_BANDS = len(ALPHAEARTH_YEARS) * _BANDS_PER_YEAR  # 448
 
 class AlphaEarthDataset(Dataset):
-    """Loads AlphaEarth annual embeddings paired with land-take segmentation masks and postitions encoding for the embedding timeseries.
+    """AlphaEarth annual embeddings paired with land-take segmentation masks.
 
     Args:
-        ids: list of REFIDs
-        transform: transforms to apply (flips, rotations)
-        prediction_horizon (K): Number of years before final year in timeseries to cut off.
-            With K=2, the model only sees data up to final year-2, forcing it to
-            predict land take K years in advance.
-        input_years (N): reference year + latest N-1 years before cutoff;
-            None means all years up to cutoff
+        ids: list of REFIDs.
+        transform: spatial transforms (flips, rotations).
+        prediction_horizon (K): zero out the last K years so the model
+            predicts K years ahead.
+        input_years (N): keep start_year + latest N-1 years before cutoff.
+            None = all years up to cutoff.
 
-    **Tile filtering** at construction time (logged):
-
-        * Tiles with no metadata or whose cutoff is out of range.
-        * Tiles missing an AlphaEarth file in ALPHAEARTH_DIR.
-        * Tiles with start year before the available ALPHAEARTH_YEARS
+    Tiles are filtered at init (logged) if they lack metadata, have
+    start_year before ALPHAEARTH_YEARS, or miss an embedding/mask file.
     """
     DATASET_NAME = "alphaearth"
 
@@ -119,7 +115,7 @@ class AlphaEarthDataset(Dataset):
 
         emb = emb.reshape(num_years, C, H, W)
 
-        # Slice embedding to match the valid tile_years
+        # Slice to the valid tile_years range
         start_clip = tile_years[0] - ALPHAEARTH_YEARS[0]
         end_clip   = tile_years[-1] - ALPHAEARTH_YEARS[0]
 
@@ -131,9 +127,8 @@ class AlphaEarthDataset(Dataset):
         mask = torch.from_numpy(mask).long()
         mask = (mask > 0).long()
 
-        # Position encoding
-        # 1-indexed absolute temporal position. 0 is reserved for padding.
-        # Uses ALL_YEARS[0] as origin so year 2017 = position 2 across all modalities.
+        # Position encoding: 1-indexed, shared origin ALL_YEARS[0]=2016.
+        # Position 0 = padding (ignored by U-TAE attention).
         start_pos = tile_years[0] - ALL_YEARS[0] + 1
         positions = torch.arange(start_pos, start_pos + current_T, dtype=torch.long)
 

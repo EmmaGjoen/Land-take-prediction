@@ -35,9 +35,7 @@ class TileMetadata:
 def load_metadata(skip_na: bool = True) -> dict[str, TileMetadata]:
     """Return {refid: TileMetadata} for all tiles.
 
-    Parameters
-    ----------
-    skip_na : if True, rows where startYear or endYear is 'NA' are silently dropped.
+    If skip_na is True (default), rows where startYear or endYear is 'NA' are dropped.
     """
     meta: dict[str, TileMetadata] = {}
     with open(METADATA_PATH, newline="") as f:
@@ -63,7 +61,7 @@ TESSERA_BANDS = 128  # spectral bands per year in each embedding GeoTIFF
 
 
 def tessera_tif_path(refid: str, year: int) -> Path:
-    """Return the canonical path for a snapped Tessera GeoTIFF."""
+    """Return the expected path for a snapped Tessera GeoTIFF."""
     return TESSERA_DIR / f"{refid}_tessera_{year}_snapped.tif"
 
 

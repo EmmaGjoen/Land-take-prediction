@@ -1,29 +1,19 @@
-"""
-Aggregate 5-fold CV results from WandB.
+"""Aggregate 5-fold CV results from WandB.
 
-Primary metric: **pooled IoU**, confusion matrices are summed across all folds
-before computing metrics, so every tile contributes equally regardless of fold
-size.  This matches the evaluation protocol of the U-TAE / PASTIS benchmark
-(Garnot & Landrieu, ICCV 2021; github.com/VSainteuf/utae-paps).
+Primary metric: pooled IoU (sum confusion matrices across folds, then compute
+metrics). Every tile contributes equally regardless of fold size. Matches the
+PASTIS evaluation protocol (Garnot & Landrieu, ICCV 2021).
 
-Secondary metric: macro mean ± std across fold scores (diagnostic only).
+Secondary metric: macro mean +/- std across fold scores (diagnostic only).
 
-Supports two experiment types via --vary:
+Usage examples::
 
-  K experiment (prediction horizon):
     python scripts/aggregate_cv_results.py --vary K --k_values 1 2 3 4 5 --dataset sentinel
-
-  N experiment (input years):
     python scripts/aggregate_cv_results.py --vary N --n_values 2 3 4 0 --k 2 --dataset sentinel
-
-  Modality comparison (fixed K=2, N=all, one row per dataset):
     python scripts/aggregate_cv_results.py --modality --datasets sentinel tessera alphaearth
 
-Add --detail for per-fold breakdown.
-
-Note: pooled metrics require runs to have logged test_tp/fp/tn/fn (available
-after the confusion-matrix logging update).  Older runs fall back to macro
-mean ± std with a warning.
+Pooled metrics need runs with test_tp/fp/tn/fn logged. Older runs fall back
+to macro mean +/- std with a warning.
 """
 
 import argparse
@@ -101,9 +91,8 @@ def fetch_runs_for_group(api: wandb.Api, group: str) -> list:
 
 
 def extract_run_data(run) -> dict | None:
-    """
-    Pull scalar metrics and, if available, raw confusion matrix totals.
-    Returns None if any scalar metric is missing (run incomplete/crashed).
+    """Pull scalar metrics and (if available) confusion matrix totals from a run.
+    Returns None if the run is missing any scalar metric (incomplete/crashed).
     """
     summary = run.summary._json_dict
 
@@ -114,8 +103,7 @@ def extract_run_data(run) -> dict | None:
             return None
         result[metric] = float(val)
 
-    # Confusion matrix totals (optional and only present in runs after the
-    # pooled-aggregation update)
+    # Confusion matrix totals (only present after the pooled-aggregation update)
     for key in CM_KEYS:
         val = summary.get(key)
         result[key] = int(val) if val is not None else None
@@ -126,21 +114,7 @@ def extract_run_data(run) -> dict | None:
 # ── aggregation ───────────────────────────────────────────────────────────────
 
 def aggregate_group(runs: list) -> dict:
-    """
-    Compute both pooled and macro-averaged metrics for a group of fold runs.
-
-    Returns
-    -------
-    {
-      "n_runs":       int,
-      "missing":      [run_name, ...],
-      "fold_data":    [{fold, run_name, ...metrics, ...cm_keys}, ...],
-      "has_cm":       bool,           # True if all folds logged CM values
-      "pooled":       {metric: float} | None,
-      "mean":         {metric: float},
-      "std":          {metric: float},
-    }
-    """
+    """Compute pooled and macro-averaged metrics for a group of fold runs."""
     fold_data = []
     missing = []
 
@@ -210,7 +184,7 @@ def print_pooled_table(results: dict, row_label: str):
     col_w = 10
     header = _header_row(row_label, col_w)
     sep = "=" * len(header)
-    print(f"\nPooled metrics")
+    print(f"\nPooled metrics (primary). All tiles from all folds contribute equally, regardless of fold size")
     print(sep)
     print(header)
     print(sep)
@@ -222,7 +196,7 @@ def print_pooled_table(results: dict, row_label: str):
             cells = [f"{r['pooled'][m]:^{col_w}.4f}" for m in SCALAR_METRICS]
         else:
             cells = [f"{'n/a':^{col_w}}"] * len(SCALAR_METRICS)
-            print(f"  [{display_val}] WARNING: no confusion matrix data — re-run with updated training script")
+            print(f"  [{display_val}] WARNING: no confusion matrix data, re-run with updated training script")
         print(f"{row_label}={display_val:<8}  {folds_str:>5}  " + "  ".join(cells))
         if r["missing"]:
             print(f"           ^ missing runs: {r['missing']}")
@@ -233,7 +207,7 @@ def print_macro_table(results: dict, row_label: str):
     col_w = 18
     header = _header_row(row_label, col_w)
     sep = "=" * len(header)
-    print(f"\nMacro mean ± std (secondary / diagnostic — unequal fold sizes affect reliability)")
+    print(f"\nMacro mean +/- std (secondary / diagnostic, unequal fold sizes affect reliability)")
     print(sep)
     print(header)
     print(sep)
@@ -376,7 +350,7 @@ def main():
 
         print("\nNote: for land-take detection (rare positive class), IoU and F1 are")
         print("      the most informative metrics. Accuracy is misleading on imbalanced data.\n")
-        print("Reference: Garnot & Landrieu (ICCV 2021) — pooled confusion matrices")
+        print("Reference: Garnot & Landrieu (ICCV 2021), pooled confusion matrices")
         print("           across folds: github.com/VSainteuf/utae-paps\n")
 
     print(f"Results saved to: {out_path}")

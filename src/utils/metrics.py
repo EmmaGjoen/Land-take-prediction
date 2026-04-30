@@ -1,19 +1,11 @@
-"""Utility metrics for binary segmentation tasks.
-
-Provides confusion matrix computation and common derived metrics.
-"""
+"""Binary segmentation metrics: confusion matrix, IoU, F1, etc."""
 from typing import Tuple, Dict
 
 import torch
 
 
 def compute_confusion_binary(y_pred: torch.Tensor, y_true: torch.Tensor, positive_class: int = 1) -> Tuple[int, int, int, int]:
-    """
-    Compute confusion matrix for binary classification.
-    y_pred, y_true: (B, H, W) with 0/1 labels (torch tensors)
-
-    Returns TP, FP, TN, FN as Python integers.
-    """
+    """Return (TP, FP, TN, FN) for binary predictions. Inputs: (B, H, W) tensors."""
     y_pred = (y_pred == positive_class)
     y_true = (y_true == positive_class)
 
@@ -25,10 +17,7 @@ def compute_confusion_binary(y_pred: torch.Tensor, y_true: torch.Tensor, positiv
 
 
 def compute_metrics_from_confusion(tp: int, fp: int, tn: int, fn: int, eps: float = 1e-8) -> Dict[str, float]:
-    """
-    Compute metrics from confusion matrix values.
-    Returns: dict with accuracy, precision, recall, f1, iou
-    """
+    """Compute accuracy, precision, recall, F1, and IoU from confusion matrix totals."""
     accuracy = (tp + tn) / (tp + tn + fp + fn + eps)
     precision = tp / (tp + fp + eps)
     recall = tp / (tp + fn + eps)

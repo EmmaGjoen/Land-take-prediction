@@ -247,7 +247,7 @@ def fetch_one_mask(mask_path: Path, year: int, out_dir: Path, gt: GeoTessera | N
                 lock.release()
 
         if len(files) == 0:
-            logging.error(f"[ERROR] Export returned no files for {refid} year={year} (registry has coverage — likely a download failure)")
+            logging.error(f"[ERROR] Export returned no files for {refid} year={year} (registry has coverage, likely a download failure)")
             return "error"
 
         raw_tifs = [Path(f) for f in files]
@@ -377,8 +377,8 @@ def main() -> None:
     total_possible = len(tasks)
     logging.info(f"Total:     {len(processed) + len(existing)}/{total_possible} mask-year combinations with embeddings")
 
-    # Write current run's skipped masks (no Tessera coverage). This reflects only the
-    # current run — re-fetching a previously skipped mask will remove it from the file.
+    # Write current run's skipped masks (no Tessera coverage). Only reflects
+    # this run; re-fetching a previously skipped mask will remove it from the file.
     skipped_file = out_dir / "skipped_masks.txt"
     if skipped:
         skipped_file.parent.mkdir(parents=True, exist_ok=True)

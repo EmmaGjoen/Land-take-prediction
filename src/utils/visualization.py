@@ -7,36 +7,14 @@ import wandb
 
 
 def upscale_mask(mask, scale: int = 4):
-    """
-    Upscale a 2D numpy mask (H, W) with values 0 or 255
-    to a larger size using nearest-neighbor interpolation.
-
-    Args:
-        mask: 2D numpy array (H, W)
-        scale: Upscaling factor (default 4)
-
-    Returns:
-        Upscaled mask (H*scale, W*scale)
-    """
+    """Upscale a 2D mask using nearest-neighbor interpolation."""
     t = torch.from_numpy(mask)[None, None].float()  # (1,1,H,W)
     t_up = F.interpolate(t, scale_factor=scale, mode="nearest")
     return t_up[0, 0].byte().numpy()
 
 
 def log_masks(model, loader, device, step, name_prefix="val", max_batches=10):
-    """
-    Log ground-truth and predicted segmentation masks to WandB as combined side-by-side images.
-    Iterates over multiple batches and creates a single image per sample with GT on left, prediction on right.
-    Visualizes masks as black (0) and white (255).
-
-    Args:
-        model: The model to evaluate
-        loader: DataLoader to sample from
-        device: Device for inference
-        step: WandB step (typically epoch number)
-        name_prefix: Prefix for WandB keys (e.g., "val", "test")
-        max_batches: Maximum number of batches to process (default 10)
-    """
+    """Log GT vs predicted masks to WandB as side-by-side images (black/white)."""
     try:
         model.eval()
         combined_images = []

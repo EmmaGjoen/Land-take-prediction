@@ -1,4 +1,4 @@
-"""Shared training utilities used across all U-TAE training scripts."""
+"""Shared training utilities for all U-TAE training scripts."""
 
 import random
 

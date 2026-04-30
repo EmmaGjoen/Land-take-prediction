@@ -55,7 +55,7 @@ def main() -> None:
                 k for k in ("crs", "shape", "bounds", "transform")
                 if r.get(k) == "False"
             ]
-            print(f"  {r['refid']}  — mismatches: {', '.join(mismatches)}")
+            print(f"  {r['refid']}  mismatches: {', '.join(mismatches)}")
             print(f"      mask shape: {r.get('mask_shape', '?')}  "
                   f"tessera shape: {r.get('tessera_shape', '?')}  "
                   f"bands: {r.get('tessera_bands', '?')}")
@@ -67,7 +67,7 @@ def main() -> None:
         print(f"ERRORS ({len(errors)}):")
         print("-" * 60)
         for r in errors:
-            print(f"  {r['refid']}  — {r['status']}")
+            print(f"  {r['refid']}  {r['status']}")
         print()
 
     # List skips
