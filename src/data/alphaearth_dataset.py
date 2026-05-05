@@ -10,7 +10,7 @@ from src.data.file_helpers import find_file_by_prefix
 from src.config import ALL_YEARS, ALPHAEARTH_YEARS, ALPHAEARTH_DIR, MASK_DIR, load_metadata
 
 _BANDS_PER_YEAR = 64
-_EXPECTED_BANDS = len(ALPHAEARTH_YEARS) * _BANDS_PER_YEAR  # 448
+_EXPECTED_BANDS = len(ALPHAEARTH_YEARS) * _BANDS_PER_YEAR  # 8 years x 64 = 512
 
 class AlphaEarthDataset(Dataset):
     """AlphaEarth annual embeddings paired with land-take segmentation masks.

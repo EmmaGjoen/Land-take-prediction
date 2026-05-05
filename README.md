@@ -15,7 +15,7 @@ data/
   raw/
     Sentinel_v2/                  Sentinel-2 mosaics (9 bands, bi-annual, 2016-2024)
     Land_take_masks_coarse/       Binary change masks (~261 tiles)
-    AlphaEarth/                   AlphaEarth embeddings (64 dims/year, 2017-2024)
+    AlphaEarth_v2/                AlphaEarth embeddings (64 dims/year, 2017-2024)
     annotations_metadata_final.csv
   processed/
     tessera/
@@ -34,7 +34,7 @@ src/
     splits.py                     Geographic 5-fold CV and legacy random split
     transform.py                  Crop, flip, normalisation
     file_helpers.py               Shared filename / refid utilities
-    geographic_folds.csv          Pre-computed fold assignments (committed)
+    geographic_folds_2017.csv     Pre-computed fold assignments, 232 tiles (committed)
   models/external/
     utae.py                       U-TAE model
     backbones/                    LTAE and ConvLSTM backbones
