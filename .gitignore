@@ -46,6 +46,10 @@ build/
 wandb/
 *.wandb
 
+# Training outputs
+checkpoints/
+results/
+
 # Slurm and training logs
 logs/
 logs/*.out
