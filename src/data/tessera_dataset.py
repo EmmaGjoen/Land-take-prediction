@@ -96,7 +96,8 @@ class TesseraDataset(Dataset):
                 f"{len(filtered)} remain."
             )
 
-        # Step 2: resolve file paths; exclude tiles with missing TESSERA or mask files.
+        # Step 2: resolve file paths; exclude tiles with missing, corrupt,
+        # or spatially-inconsistent TESSERA files, or missing mask files.
         self.emb_paths: dict[str, list[Path]] = {}
         self.mask_paths: dict[str, Path] = {}
         valid_ids: list[str] = []
@@ -114,6 +115,25 @@ class TesseraDataset(Dataset):
 
             if missing:
                 excluded_tessera[fid] = missing
+                continue
+
+            # Verify all files are readable and share the same spatial dimensions.
+            shapes, corrupt = [], False
+            for p in paths:
+                try:
+                    with rasterio.open(p) as src:
+                        shapes.append((src.height, src.width))
+                except Exception:
+                    print(f"[TesseraDataset] Excluded {fid}: corrupt file {p.name}.")
+                    corrupt = True
+                    break
+            if corrupt:
+                continue
+            if len(set(shapes)) > 1:
+                print(
+                    f"[TesseraDataset] Excluded {fid}: "
+                    f"inconsistent spatial shapes across years {set(shapes)}."
+                )
                 continue
 
             try:
