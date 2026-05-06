@@ -66,11 +66,11 @@ CONFIG = {
     "focal_gamma": 2.0,             # focusing parameter for focal loss (Lin et al., 2017)
 
     # Training
-    "epochs": 75,
+    "epochs": 150,
     "learning_rate": 1e-3,
-    "lr_patience": 7,               # epochs with no val_loss improvement before LR halves
+    "lr_patience": 12,              # epochs with no val_loss improvement before LR halves
     "lr_factor": 0.5,               # multiply LR by this when patience runs out
-    "early_stopping_patience": 15,  # Epochs without val IoU improvement before stopping
+    "early_stopping_patience": 30,  # Epochs without val IoU improvement before stopping
     "batch_size": 4,
     "augment_train": True,  # Enable spatial augmentation (flips, rotations)
     
