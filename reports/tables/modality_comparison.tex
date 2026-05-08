@@ -1,0 +1,31 @@
+
+% Modality comparison: K=2, N=all available input years, 5-fold geographic CV.
+% Modalities: AlphaEarth (VHR aerial/satellite composite), GeoTessera (self-supervised
+% embedding), Sentinel-2 (multispectral time series).
+% Pooled metrics sum confusion matrices across all folds before computing metrics.
+% Macro mean/std are computed per-fold then averaged -- secondary diagnostic.
+
+\begin{table}[ht]
+  \centering
+  \caption{%
+    Segmentation performance of U-TAE across spectral modalities for
+    land-take detection (prediction horizon $K = 2$ years, all available input
+    years, 5-fold geographic cross-validation).
+    Pooled metrics aggregate all test pixels across folds so that each tile
+    contributes equally~\citep{garnot2021pastis}; accuracy is omitted as it
+    is misleading under class imbalance.
+    $\text{IoU}_{\text{macro}}$ is the mean $\pm$ standard deviation of the
+    per-fold IoU scores and is reported as a diagnostic.
+    Best pooled value in each column is \textbf{bold}.%
+  }
+  \label{tab:modality_comparison}
+  \begin{tabular}{lccccl}
+    \toprule
+    Modality   & IoU & F1 & Precision & Recall & $\text{IoU}_{\text{macro}} \pm \sigma$ \\
+    \midrule
+    AlphaEarth  & \textbf{0.430} & \textbf{0.601} & \textbf{0.688} & 0.534           & $0.414 \pm 0.061$ \\
+    GeoTessera  & 0.427           & 0.599           & 0.669           & \textbf{0.542} & $0.410 \pm 0.066$ \\
+    Sentinel-2  & 0.418           & 0.589           & 0.679           & 0.520           & $0.405 \pm 0.044$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}

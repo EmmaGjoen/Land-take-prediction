@@ -1,0 +1,31 @@
+
+% K-slicing experiment: Sentinel-2, N=all available input years, 5-fold geographic CV.
+% Pooled metrics sum confusion matrices across all folds before computing metrics
+% (every tile contributes equally regardless of fold size).
+% Macro mean/std are computed per-fold then averaged -- secondary diagnostic.
+
+\begin{table}[ht]
+  \centering
+  \caption{%
+    Effect of prediction horizon $K$ on land-take segmentation performance
+    (Sentinel-2, all available input years, 5-fold geographic cross-validation).
+    Pooled metrics aggregate all test pixels across folds so that each tile
+    contributes equally~\citep{garnot2021pastis}; accuracy is omitted as it
+    is misleading under class imbalance.
+    $\text{IoU}_{\text{macro}}$ is the mean $\pm$ standard deviation of the
+    per-fold IoU scores and is reported as a diagnostic.
+    Best pooled value in each column is \textbf{bold}.%
+  }
+  \label{tab:k_slicing}
+  \begin{tabular}{cccccl}
+    \toprule
+    $K$ (years) & IoU & F1 & Precision & Recall & $\text{IoU}_{\text{macro}} \pm \sigma$ \\
+    \midrule
+    1 & \textbf{0.474} & \textbf{0.643} & \textbf{0.718} & \textbf{0.582} & $0.462 \pm 0.057$ \\
+    2 & 0.334           & 0.501           & 0.646           & 0.409           & $0.345 \pm 0.078$ \\
+    3 & 0.327           & 0.493           & 0.571           & 0.434           & $0.320 \pm 0.029$ \\
+    4 & 0.221           & 0.362           & 0.523           & 0.277           & $0.193 \pm 0.073$ \\
+    5 & 0.131           & 0.232           & 0.207           & 0.263           & $0.113 \pm 0.056$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
