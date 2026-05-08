@@ -10,13 +10,12 @@ class FocalLoss(nn.Module):
     gamma=0 is equivalent to standard cross-entropy.
     """
 
-    def __init__(self, gamma: float = 2.0, weight: torch.Tensor = None):
+    def __init__(self, gamma: float = 2.0):
         super().__init__()
         self.gamma = gamma
-        self.weight = weight
 
     def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         # inputs: (B, C, H, W), targets: (B, H, W)
-        ce = F.cross_entropy(inputs, targets, weight=self.weight, reduction="none")
+        ce = F.cross_entropy(inputs, targets, reduction="none")
         pt = torch.exp(-ce)
         return ((1 - pt) ** self.gamma * ce).mean()
