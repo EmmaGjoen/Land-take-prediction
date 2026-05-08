@@ -177,6 +177,7 @@ class TesseraDataset(Dataset):
             yearly.append(arr)
 
         emb = np.stack(yearly, axis=0)  # (T, 128, H, W)
+        emb = np.nan_to_num(emb, nan=0.0, posinf=0.0, neginf=0.0)
         current_T = emb.shape[0]
 
         # Load segmentation mask.

@@ -79,7 +79,7 @@ class Normalize:
             raise ValueError(f"Expected 3D or 4D tensor, got shape {x.shape}")
         
         x = (x - mean) / (std + 1e-6)
-        x = torch.nan_to_num(x, nan=0.0, posinf=1.0, neginf=0.0)
+        x = torch.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
         return x, mask
 
 
