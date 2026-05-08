@@ -13,7 +13,7 @@ def upscale_mask(mask, scale: int = 4):
     return t_up[0, 0].byte().numpy()
 
 
-def log_masks(model, loader, device, step, name_prefix="val", max_batches=10):
+def log_masks(model, loader, device, step=None, name_prefix="val", max_batches=10):
     """Log GT vs predicted masks to WandB as side-by-side images (black/white)."""
     try:
         model.eval()

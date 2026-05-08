@@ -516,7 +516,7 @@ def main() -> None:
     })
 
     print("\nLogging test set masks to WandB...")
-    log_masks(model, test_loader, device, step=CONFIG["epochs"], name_prefix="test", max_batches=10)
+    log_masks(model, test_loader, device, name_prefix="test", max_batches=10)
 
     run.finish()
 

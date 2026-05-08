@@ -540,7 +540,7 @@ def main():
     
     # Log combined masks from multiple test batches
     print("\nLogging test set masks...")
-    log_masks(model, test_loader, device, step=CONFIG["epochs"], name_prefix="test", max_batches=10)
+    log_masks(model, test_loader, device, name_prefix="test", max_batches=10)
     
     # Finish WandB
     run.finish()
