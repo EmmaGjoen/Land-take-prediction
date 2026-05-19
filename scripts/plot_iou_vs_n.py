@@ -1,11 +1,4 @@
-"""Plot per-fold test IoU vs number of input years N for the N-slicing experiment.
-
-Fetches per-fold test_iou from WandB (group: UTAE_sentinel_K2_N{n}_slicing_v2)
-and saves a line plot to reports/figures/iou_vs_n.pdf and .png.
-
-Usage:
-    python scripts/plot_iou_vs_n.py
-"""
+"""Per-fold test IoU vs number of input years N. Saves to reports/figures/iou_vs_n.pdf"""
 
 import sys
 from pathlib import Path
@@ -33,7 +26,6 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def fetch_data() -> dict[int, dict]:
-    """Return {fold: {n: test_iou}} from WandB."""
     api = wandb.Api()
     data: dict[int, dict] = {}
     for n in N_VALUES:

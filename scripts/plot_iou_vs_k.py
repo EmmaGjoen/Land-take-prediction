@@ -1,11 +1,4 @@
-"""Plot per-fold test IoU vs prediction horizon K for the K-slicing experiment.
-
-Fetches per-fold test_iou from WandB (group: UTAE_sentinel_K{k}_N3_slicing_v3)
-and saves a line plot to reports/figures/iou_vs_k.pdf and .png.
-
-Usage:
-    python scripts/plot_iou_vs_k.py
-"""
+"""Per-fold test IoU vs prediction horizon K. Saves to reports/figures/iou_vs_k.pdf"""
 
 import sys
 from pathlib import Path
@@ -33,7 +26,6 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def fetch_data() -> dict[int, dict[int, float]]:
-    """Return {fold: {k: test_iou}} from WandB."""
     api = wandb.Api()
     data: dict[int, dict[int, float]] = {}
     for k in K_VALUES:
