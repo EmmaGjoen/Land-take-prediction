@@ -17,8 +17,6 @@ venv/
 
 # Data
 data/*
-reports/figures/
-figures/
 *.tif
 *.tiff
 *.zip
@@ -48,7 +46,6 @@ wandb/
 
 # Training outputs
 checkpoints/
-results/
 
 # Slurm and training logs
 logs/
