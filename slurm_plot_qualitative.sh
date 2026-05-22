@@ -19,3 +19,4 @@ export $(grep -v '^#' /cluster/home/$USER/Land-take-prediction/.env | xargs)
 
 python scripts/plot_qualitative_k.py
 python scripts/plot_qualitative_n.py
+python scripts/plot_qualitative_modality.py
