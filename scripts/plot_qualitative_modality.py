@@ -111,7 +111,7 @@ for tile_label, (refid, fold) in TILES.items():
 # ---------------------------------------------------------------------------
 
 tile_labels = list(TILES.keys())
-tile_display = {"dense": "Dense land take", "sparse": "Sparse land take"}
+tile_display = {"dense": "Dense land take sample", "sparse": "Sparse land take sample"}
 col_titles = ["Ground truth"] + [MOD_LABELS[m] for m in MODALITIES]
 n_rows = len(tile_labels)
 
@@ -134,15 +134,10 @@ for row, tile_label in enumerate(tile_labels):
 for col, title in enumerate(col_titles):
     axes[0, col].set_title(title, fontsize=9, pad=4)
 
-line_y = 0.5 / n_rows
-fig.add_artist(plt.Line2D([0.09, 0.91], [1 - line_y, 1 - line_y],
-                           transform=fig.transFigure,
-                           color="gray", linewidth=0.8, linestyle="--"))
-
 cax = fig.add_axes([0.93, 0.15, 0.015, 0.7])
 sm = plt.cm.ScalarMappable(cmap="viridis", norm=plt.Normalize(0, 1))
 sm.set_array([])
-fig.colorbar(sm, cax=cax, label="P(land-take)")
+fig.colorbar(sm, cax=cax, label="P(land take)")
 
 plt.savefig(OUT_DIR / "qualitative_modality.pdf", bbox_inches="tight", dpi=150)
 plt.savefig(OUT_DIR / "qualitative_modality.png", bbox_inches="tight", dpi=150)
