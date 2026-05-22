@@ -30,7 +30,7 @@ from src.models.external.utae import UTAE
 # ---------------------------------------------------------------------------
 
 TILES = {
-    "dense": ("a4-63523450914143_51-75228829204871", 0),   # fold 0, 53% land-take
+    "dense": ("a4-63523450914143_51-75228829204871", 0),   # fold 0, 53% land take
     "sparse": ("a24-34041727116894_57-09974939549575", 1), # fold 1, 7% fragmented
 }
 K_VALUES = [1, 3, 5]
@@ -119,8 +119,8 @@ for tile_label, (refid, fold) in TILES.items():
 # Plot
 # ---------------------------------------------------------------------------
 
-col_titles = ["Start frame", "Last input frame", "Ground truth", "Pred. probability", "Prediction"]
-tile_display = {"dense": "Dense land take", "sparse": "Sparse land take"}
+col_titles = ["First input image", "Last input image", "Ground truth", "Pred. probability", "Prediction"]
+tile_display = {"dense": "Dense land take sample", "sparse": "Sparse land take sample"}
 n_rows = len(K_VALUES)
 
 for tile_label in list(TILES.keys()):
@@ -149,7 +149,7 @@ for tile_label in list(TILES.keys()):
     cax = fig.add_axes([0.95, 0.15, 0.015, 0.7])
     sm = plt.cm.ScalarMappable(cmap="viridis", norm=plt.Normalize(0, 1))
     sm.set_array([])
-    fig.colorbar(sm, cax=cax, label="P(land-take)")
+    fig.colorbar(sm, cax=cax, label="P(land take)")
 
     plt.savefig(OUT_DIR / f"qualitative_k_slicing_{tile_label}.pdf", bbox_inches="tight", dpi=150)
     plt.savefig(OUT_DIR / f"qualitative_k_slicing_{tile_label}.png", bbox_inches="tight", dpi=150)
