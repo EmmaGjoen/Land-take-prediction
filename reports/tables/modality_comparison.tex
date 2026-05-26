@@ -1,27 +1,25 @@
 
-% Modality comparison: K=2, N=all available input years, 5-fold geographic CV.
-% Modalities: AlphaEarth (VHR aerial/satellite composite), GeoTessera (self-supervised
-% embedding), Sentinel-2 (multispectral time series).
+% Modality comparison: K=2, N=3 input years, 5-fold geographic CV.
 % Pooled metrics sum confusion matrices across all folds before computing metrics.
-% Macro mean/std are computed per-fold then averaged -- secondary diagnostic.
+% IoU +/- std: pooled IoU with fold-level standard deviation.
 
 \begin{table}[ht]
   \centering
   \caption{%
     U-TAE land-take detection performance by input modality
-    ($K = 2$, $N = \text{all}$, 5-fold geographic cross-validation).
+    ($K = 2$, $N = 3$ input years, 5-fold geographic cross-validation).
     Metrics are pooled across folds~\citep{garnot2021pastis}.
-    The last column is the mean $\pm$ std IoU across folds.
+    IoU $\pm$ std denotes the pooled IoU with fold-level standard deviation.
     Best value per column is \textbf{bold}.%
   }
   \label{tab:modality_comparison}
-  \begin{tabular}{lcccccl}
+  \begin{tabular}{lccccc}
     \toprule
-    Modality   & IoU & F1 & Precision & Recall & Accuracy & IoU mean $\pm$ std \\
+    Modality   & IoU $\pm$ std & F1 & Precision & Recall & Accuracy \\
     \midrule
-    AlphaEarth  & \textbf{0.430} & \textbf{0.601} & \textbf{0.688} & 0.534           & \textbf{0.914} & $0.414 \pm 0.061$ \\
-    GeoTessera  & 0.427           & 0.599           & 0.669           & \textbf{0.542} & 0.911           & $0.410 \pm 0.066$ \\
-    Sentinel-2  & 0.418           & 0.589           & 0.679           & 0.520           & 0.910           & $0.405 \pm 0.044$ \\
+    Sentinel-2  & $0.399 \pm 0.044$ & 0.570           & \textbf{0.691} & 0.486           & 0.910           \\
+    AlphaEarth  & $0.413 \pm 0.061$ & 0.584           & 0.628           & \textbf{0.547} & 0.905           \\
+    GeoTessera  & $\mathbf{0.416} \pm 0.088$ & \textbf{0.588} & 0.677           & 0.519           & \textbf{0.911} \\
     \bottomrule
   \end{tabular}
 \end{table}
