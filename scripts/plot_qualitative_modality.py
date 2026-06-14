@@ -1,6 +1,6 @@
-"""Qualitative modality comparison: AlphaEarth, GeoTessera, Sentinel-2.
+"""Qualitative modality comparison: AlphaEarth, TESSERA, Sentinel-2.
 
-Grid: 2 rows (dense, sparse tiles) x 4 columns (GT, AlphaEarth prob, GeoTessera prob, Sentinel-2 prob).
+Grid: 2 rows (dense, sparse tiles) x 4 columns (GT, AlphaEarth prob, TESSERA prob, Sentinel-2 prob).
 K=2, N=all. Saves to reports/figures/qualitative_modality.pdf and .png.
 """
 
@@ -42,7 +42,7 @@ OUT_DIR = root / "reports" / "figures"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 MODALITIES = ["alphaearth", "tessera", "sentinel"]
-MOD_LABELS = {"alphaearth": "AlphaEarth", "tessera": "GeoTessera", "sentinel": "Sentinel-2"}
+MOD_LABELS = {"alphaearth": "AlphaEarth", "tessera": "TESSERA", "sentinel": "Sentinel-2"}
 
 
 def get_sentinel_norm_stats(fold: int) -> tuple[list, list]:

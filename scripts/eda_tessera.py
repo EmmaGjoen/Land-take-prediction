@@ -157,7 +157,7 @@ def plot_coverage_heatmap(coverage: dict, years: list[int], out_dir: Path) -> No
     ax.set_xticklabels(years)
     ax.set_xlabel("Year")
     ax.set_ylabel("Mask (index)")
-    ax.set_title(f"GeoTessera Coverage: {len(masks)} masks × {len(years)} years")
+    ax.set_title(f"TESSERA Coverage: {len(masks)} masks × {len(years)} years")
     
     # Add colorbar
     cbar = plt.colorbar(im, ax=ax, shrink=0.5)
@@ -201,7 +201,7 @@ def generate_markdown_report(
     else:
         bands = dtype = resolution = "N/A"
     
-    report = f"""# GeoTessera EDA Report
+    report = f"""# TESSERA EDA Report
 
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
@@ -274,7 +274,7 @@ Masks missing data for some years:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="EDA for GeoTessera embeddings")
+    parser = argparse.ArgumentParser(description="EDA for TESSERA embeddings")
     parser.add_argument(
         "--tessera-dir", 
         type=Path, 

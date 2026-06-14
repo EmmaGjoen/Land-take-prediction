@@ -95,7 +95,7 @@ CONFIG = {
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Train U-TAE on GeoTessera embeddings (no Sentinel data)."
+        description="Train U-TAE on TESSERA embeddings (no Sentinel-2 data)."
     )
     parser.add_argument(
         "--prediction_horizon", type=int, default=None,

@@ -1,10 +1,10 @@
 """
-Fetch GeoTessera embeddings for all tiles in the metadata and snap to mask grid.
+Fetch TESSERA embeddings for all tiles in the metadata and snap to mask grid.
 
 Tiles are discovered via load_metadata() + MASK_DIR, mirroring the training
 datasets, so fetch coverage always matches what the model expects.
 
-When a mask's bounding box overlaps multiple GeoTessera tiles, all tiles are
+When a mask's bounding box overlaps multiple TESSERA tiles, all tiles are
 downloaded and merged with rasterio.merge before snapping to the mask grid.
 
 Usage:
@@ -37,17 +37,17 @@ from src.config import MASK_DIR, load_metadata
 _WGS84 = CRS.from_epsg(4326)
 _thread_local = threading.local()
 
-# Per-GeoTessera-tile locks: prevents two workers from downloading the same
+# Per-TESSERA-tile locks: prevents two workers from downloading the same
 # 0.1° grid tile simultaneously, avoiding races on the shared .npy cache.
 _tile_locks: dict[tuple, threading.Lock] = {}
 _tile_locks_mutex = threading.Lock()
 
 
 def _get_gt(embeddings_dir: Path | None = None) -> GeoTessera:
-    """Return a thread-local GeoTessera instance (created once per thread).
+    """Return a thread-local TESSERA client instance (created once per thread).
 
     embeddings_dir sets where intermediate .npy tile cache is stored.
-    Defaults to cwd if not specified (GeoTessera default).
+    Defaults to cwd if not specified (geotessera package default).
     """
     if not hasattr(_thread_local, "gt"):
         kwargs = {"embeddings_dir": str(embeddings_dir)} if embeddings_dir is not None else {}
@@ -56,10 +56,10 @@ def _get_gt(embeddings_dir: Path | None = None) -> GeoTessera:
 
 
 def _geotessera_tile_keys(bbox: tuple[float, float, float, float], year: int) -> list[tuple]:
-    """Compute which GeoTessera 0.1° grid cells a bbox overlaps, keyed by (lon, lat, year).
+    """Compute which TESSERA 0.1° grid cells a bbox overlaps, keyed by (lon, lat, year).
 
     Used to acquire per-tile locks before downloading so parallel workers
-    never race on the same underlying GeoTessera file.
+    never race on the same underlying TESSERA tile file.
     """
     import math
     min_lon, min_lat, max_lon, max_lat = bbox
@@ -75,7 +75,7 @@ def _geotessera_tile_keys(bbox: tuple[float, float, float, float], year: int) ->
 
 
 def _acquire_tile_locks(keys: list[tuple]) -> list[threading.Lock]:
-    """Acquire locks for the given GeoTessera tile keys in sorted order (avoids deadlock)."""
+    """Acquire locks for the given TESSERA tile keys in sorted order (avoids deadlock)."""
     with _tile_locks_mutex:
         for k in keys:
             if k not in _tile_locks:
@@ -103,7 +103,7 @@ def bbox_from_mask(mask_path: Path) -> tuple[float, float, float, float]:
     """Return bounding box in WGS84 degrees (min_lon, min_lat, max_lon, max_lat).
 
     Reprojects from the mask's native CRS if it is not already WGS84, so that
-    GeoTessera's tile registry (which indexes in 0.1° WGS84 tiles) receives
+    the TESSERA tile registry (which indexes in 0.1° WGS84 tiles) receives
     correct coordinates regardless of the mask projection.
     """
     with rasterio.open(mask_path) as src:
@@ -233,7 +233,7 @@ def fetch_one_mask(mask_path: Path, year: int, out_dir: Path, gt: GeoTessera | N
             logging.warning(f"[SKIP] No Tessera coverage for {refid} year={year}")
             return "skipped"
 
-        # Acquire per-GeoTessera-tile locks before downloading to prevent
+        # Acquire per-TESSERA-tile locks before downloading to prevent
         # parallel workers from racing on the same 0.1° grid cell (causes hash mismatch).
         tile_keys = _geotessera_tile_keys(bbox, year)
         locks = _acquire_tile_locks(tile_keys)
@@ -272,7 +272,7 @@ def parse_year_arg(year_str: str) -> list[int]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fetch GeoTessera embeddings for HABLOSS masks")
+    parser = argparse.ArgumentParser(description="Fetch TESSERA embeddings for land take masks")
     parser.add_argument("--masks-dir", type=Path, default=Path("data/raw/Land_take_masks_coarse"), help="Directory containing mask files")
     parser.add_argument("--out-dir", type=Path, default=Path("data/processed/tessera"), help="Output directory")
     parser.add_argument("--year", type=str, default="2017-2024", help="Year or year range (e.g., 2024 or 2017-2024)")

@@ -2,7 +2,7 @@
 Analyse the spatial coverage impact of the multi-tile TESSERA merge fix.
 
 For each mask, computes:
-  - How many GeoTessera 0.1-degree tiles it overlaps
+  - How many TESSERA 0.1-degree tiles it overlaps
   - For multi-tile masks: the maximum fraction of the bbox a single tile covers
     (upper bound on what the old fetch logic could supply)
 
@@ -183,7 +183,7 @@ def write_summary(records: list[dict]) -> Path:
 
     lines: list[str] = []
 
-    lines.append("# Multi-Tile GeoTessera Coverage Impact\n\n")
+    lines.append("# Multi-Tile TESSERA Coverage Impact\n\n")
     lines.append(f"Training years analysed: {TESSERA_YEARS[0]}–{TESSERA_YEARS[-1]}\n\n")
 
     lines.append("## Overall summary\n\n")
@@ -223,7 +223,7 @@ def write_summary(records: list[dict]) -> Path:
     lines.append("## LaTeX table\n\n```latex\n")
     lines.append("\\begin{table}[h]\n\\centering\n")
     lines.append(
-        "\\caption{GeoTessera tile overlap per HABLOSS mask. "
+        "\\caption{TESSERA tile overlap per mask. "
         "Under the previous fetch logic, masks overlapping multiple tiles received "
         "embeddings covering only a single tile's extent. "
         "The updated logic merges all tiles before snapping.}\n"
@@ -264,7 +264,7 @@ def make_figure(records: list[dict]) -> Path:
             ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.15,
                     str(count), ha="center", va="bottom", fontsize=9)
     ax.set_xticks(range(1, max_n + 1))
-    ax.set_xlabel("Number of GeoTessera tiles overlapping mask bbox")
+    ax.set_xlabel("Number of TESSERA tiles overlapping mask bbox")
     ax.set_ylabel("Number of masks")
     ax.set_title("(a)  Tile overlap distribution")
     ax.set_ylim(0, max(tile_counts) * 1.2)
@@ -300,7 +300,7 @@ def make_figure(records: list[dict]) -> Path:
         ax.set_title("(b)  Coverage fraction (multi-tile)")
 
     fig.suptitle(
-        f"GeoTessera multi-tile coverage impact  |  {len(records)} masks  |  years {TESSERA_YEARS[0]}–{TESSERA_YEARS[-1]}",
+        f"TESSERA multi-tile coverage impact  |  {len(records)} masks  |  years {TESSERA_YEARS[0]}–{TESSERA_YEARS[-1]}",
         fontsize=11, y=1.01,
     )
     plt.tight_layout()

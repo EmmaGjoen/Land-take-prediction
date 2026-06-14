@@ -22,7 +22,7 @@ sbatch --export=K=2,INPUT_YEARS=3,TAG=modality_v3,FOLDS_FILE="${FOLDS}" slurm_ut
 echo "Submitting AlphaEarth  K=2 N=3 modality_v3 ..."
 sbatch --export=K=2,INPUT_YEARS=3,TAG=modality_v3,FOLDS_FILE="${FOLDS}" slurm_utae_alphaearth.sh
 
-echo "Submitting GeoTessera  K=2 N=3 modality_v3 ..."
+echo "Submitting TESSERA     K=2 N=3 modality_v3 ..."
 sbatch --export=K=2,INPUT_YEARS=3,TAG=modality_v3,FOLDS_FILE="${FOLDS}" slurm_utae_tessera.sh
 
 echo "Done. 3 x 5-fold array jobs submitted."

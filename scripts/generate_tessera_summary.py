@@ -96,7 +96,7 @@ def generate_markdown_summary(data: dict, out_path: Path) -> None:
         masks_with_year = {m for m, yrs in coverage.items() if year in yrs}
         missing_by_year[year] = sorted(all_masks - masks_with_year)
     
-    report = f"""# GeoTessera Coverage Summary
+    report = f"""# TESSERA Coverage Summary
 
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
@@ -186,7 +186,7 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate GeoTessera coverage summary")
+    parser = argparse.ArgumentParser(description="Generate TESSERA coverage summary")
     parser.add_argument(
         "--tessera-dir",
         type=Path,
