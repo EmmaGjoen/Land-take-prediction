@@ -1,17 +1,10 @@
-"""Generate geographic 5-fold cross-validation assignments for all tiles.
+"""Generate geographic 5-fold CV assignments for all tiles.
 
-Coordinates are extracted directly from each tile's REFID and K-means
-clustering on (lon, lat) produces five spatially compact folds, mirroring
-the approach used in the PASTIS benchmark (Garnot & Landrieu, ICCV 2021).
-Spatial separation avoids the performance overestimation (up to 28%) that
-random splits can introduce due to spatial autocorrelation.
+K-means on (lon, lat) coordinates produces spatially compact folds,
+following the PASTIS benchmark (Garnot & Landrieu, ICCV 2021).
+This avoids spatial autocorrelation inflating test metrics.
 
-Run once before training:
-
-    python scripts/create_folds.py
-
-The assignments are written to ``src/data/geographic_folds.csv`` and should
-be committed to the repository so that all experiments use identical splits.
+Run once before training, then commit the output CSV.
 """
 from __future__ import annotations
 import argparse
@@ -69,8 +62,8 @@ def main() -> None:
     fold_assignments = create_geographic_folds(refids, n_folds=N_FOLDS, random_state=RANDOM_STATE)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    save_folds(fold_assignments, FOLDS_PATH)
-    print(f"Saved fold assignments → {FOLDS_PATH}")
+    save_folds(fold_assignments, args.output)
+    print(f"Saved fold assignments → {args.output}")
 
     # Per-fold statistics
     fold_refids: dict[int, list[str]] = defaultdict(list)

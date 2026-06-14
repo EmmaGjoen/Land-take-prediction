@@ -1,3 +1,5 @@
+"""Sentinel-2 time series Dataset for land take segmentation."""
+import bisect
 from pathlib import Path
 import numpy as np
 import rasterio
@@ -26,17 +28,18 @@ class SentinelDataset(Dataset):
         input_years: int | None = None,
         calibrate_mode: bool = False,
     ):
-        """
-        - ids: list of REFIDs (filename stems without the long suffix)
-        - transform: Transform to apply (flips, rotations, normalization)
-        - frequency: two quarters a year as default, optional: annual
-        - prediction_horizon (K): Number of years before final year in timeseries to cut off.
-            With K=2, the model only sees data up to final year-2, forcing it to
-            predict land take K years in advance.
-        - input_years (N): reference year + latest N-1 years before cutoff;
-            None means all available years except the ones masked by the prediction  horizon
-        - calibrate mode: use when computing normalization stats to avoid zero padding affecting the mean and std
-        
+        """Sentinel-2 time series dataset for land take segmentation.
+
+        Args:
+            ids: list of REFIDs (tile identifiers).
+            transform: spatial/spectral transforms (flips, rotations, normalization).
+            frequency: bi-quarterly (default) or "annual".
+            prediction_horizon (K): zero out the last K years so the model predicts
+                K years ahead. E.g. K=2 hides 2023-2024 for a tile ending in 2024.
+            input_years (N): keep start_year + latest N-1 years before cutoff.
+                None = all available years.
+            calibrate_mode: skip temporal masking/padding, used when computing
+                normalization stats so zeros don't skew mean/std.
         """
 
         self.transform = transform
@@ -50,8 +53,8 @@ class SentinelDataset(Dataset):
         self.steps_per_year = 1 if self.frequency == "annual" else ACQUISITIONS_PER_YEAR_SENTINEL
         self.max_timesteps = len(SENTINEL_YEARS) * self.steps_per_year
 
-        # Drop tiles with no metadata or whose cutoff or start year is out of range 
-        # Example: end_year=2020 with K=5 → cutoff=2015, which is before our data starts.
+        # Drop tiles with no metadata or whose cutoff/start year is out of range.
+        # e.g. end_year=2020 with K=5 gives cutoff=2015, before our data starts.
         filtered, dropped = [], []
         for fid in ids:
             meta = self.metadata.get(fid)
@@ -68,7 +71,7 @@ class SentinelDataset(Dataset):
 
             if meta.start_year < SENTINEL_YEARS[0]:
                 dropped.append(fid)
-                print(f"[Sentinel] xcluded {fid}: has annotation start year before {SENTINEL_YEARS[0]}.")
+                print(f"[Sentinel] Excluded {fid}: has annotation start year before {SENTINEL_YEARS[0]}.")
                 continue
 
             cutoff_year = meta.end_year - prediction_horizon
@@ -112,6 +115,8 @@ class SentinelDataset(Dataset):
 
         img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
 
+        img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+
         # Warn if Sentinel and mask have different spatial dimensions
         if img.shape[-2:] != mask.shape:
             print(f"[WARN] spatial mismatch for {fid}: Sentinel {img.shape[-2:]} vs mask {mask.shape}")
@@ -125,7 +130,7 @@ class SentinelDataset(Dataset):
         img = img.reshape(num_years, num_quarters, C, H, W)
 
 
-        # Slice embedding to match the valid tile_years
+        # Slice to the valid tile_years range
         start_clip = tile_years[0] - SENTINEL_YEARS[0]
         end_clip   = tile_years[-1] - SENTINEL_YEARS[0]
         img = img[start_clip : end_clip + 1]
@@ -150,9 +155,8 @@ class SentinelDataset(Dataset):
 
         current_T = img.shape[0]
 
-        # Position encoding: encode each timestep's absolute temporal position.
-        # Positions are 1-indexed so that 0 is always available to mark padding.
-        # U-TAE masks out any timestep with position=0 from attention.
+        # Position encoding: 1-indexed so that 0 marks padding.
+        # U-TAE ignores any timestep with position=0 in attention.
 
         if self.frequency == "annual":
             start_pos = start_clip + 1    # e.g. 2016 → 1, 2018 → 3
@@ -166,29 +170,24 @@ class SentinelDataset(Dataset):
         mask = torch.from_numpy(mask).long()    # (H, W)
         mask = (mask > 0).long()
 
-        # Apply transforms (normalization + augmentation) before any zero-padding, 
-        # so that padding zeros do not affect normalization statistics.
+        # Apply transforms before zero-padding so padding doesn't affect stats.
         if self.transform is not None:
             img, mask = self.transform(img, mask)
 
-        # Zero out timesteps after cutoff year (end_year - K) so U-TAE ignores them.
-        # The model only sees data up to the cutoff, forcing it to predict K years ahead.
+        # Zero out timesteps after cutoff (end_year - K) so the model predicts K years ahead.
         cutoff_year = meta.end_year - self.prediction_horizon
-        cutoff_idx  = tile_years.index(cutoff_year)
-        n_visible = (cutoff_idx + 1) * self.steps_per_year
+        n_visible_years = bisect.bisect_right(tile_years, cutoff_year)
+        n_visible = n_visible_years * self.steps_per_year
 
-        # Aplly prediction horizon (K) masking
+        # Apply prediction horizon (K) masking
         img[n_visible:] = 0.0
         positions[n_visible:] = 0
 
-        # Apply input years (N) masking 
+        # Input years (N) masking: keep start_year + the N-1 latest years before cutoff.
         if self.input_years is not None:
-            # N total years: the start_year, plus the (N-1) latest years ending at cutoff
             window_limit = cutoff_year - (self.input_years - 1)
-            
-            # Iterate only through the years that survived the cutoff
-            for i, y in enumerate(tile_years[:cutoff_idx + 1]):
-                # If the year is NOT the start year of the tile AND falls before our N-1 window, mask it
+            for i, y in enumerate(tile_years[:n_visible_years]):
+                # Always keep start_year; mask anything before the N-1 window
                 if y != tile_years[0] and y <= window_limit:
                     t_start = i * self.steps_per_year
                     t_end = t_start + self.steps_per_year
@@ -196,8 +195,7 @@ class SentinelDataset(Dataset):
                     img[t_start:t_end] = 0.0
                     positions[t_start:t_end] = 0
 
-        # Pad or truncate to max_timesteps
-        # Padding is zeros so U-TAE treats them as masked timesteps
+        # Pad or truncate to max_timesteps (zeros = masked by U-TAE)
         if current_T < self.max_timesteps:
             pad_len = self.max_timesteps - current_T
             img = F.pad(img, (0, 0, 0, 0, 0, 0, 0, pad_len))

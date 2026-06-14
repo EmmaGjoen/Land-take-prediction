@@ -1,0 +1,29 @@
+
+Connecting to WandB: nina_prosjektoppgave/data_variasjon_utae
+  Fetching group: UTAE_sentinel_K2_Nall_modality ... 5 run(s) found
+  Fetching group: UTAE_tessera_K2_Nall_modality ... 5 run(s) found
+  Fetching group: UTAE_alphaearth_K2_Nall_modality ... 5 run(s) found
+
+Modality comparison: K=2, N=all
+
+Pooled metrics (primary). All tiles from all folds contribute equally, regardless of fold size
+=============================================================================
+   dataset  Folds      F1      Precision     Recall       IoU       Accuracy 
+=============================================================================
+dataset=alphaearth    5/5    0.5836      0.6819      0.5101      0.4120      0.9111  
+dataset=sentinel    5/5    0.5623      0.6600      0.4898      0.3911      0.9058  
+dataset=tessera     5/5    0.6015      0.6480      0.5613      0.4301      0.9091  
+=============================================================================
+
+Macro mean +/- std (secondary / diagnostic, unequal fold sizes affect reliability)
+=====================================================================================================================
+   dataset  Folds          F1              Precision             Recall               IoU               Accuracy     
+=====================================================================================================================
+dataset=alphaearth    5/5    0.5613±0.0730       0.6608±0.0955       0.4938±0.0803       0.3930±0.0722       0.9084±0.0105   
+dataset=sentinel    5/5    0.5530±0.0440       0.6541±0.0803       0.4831±0.0476       0.3832±0.0426       0.9049±0.0130   
+dataset=tessera     5/5    0.5853±0.0528       0.6471±0.0567       0.5398±0.0835       0.4153±0.0532       0.9093±0.0076   
+=====================================================================================================================
+
+Reference: Garnot & Landrieu (ICCV 2021), pooled confusion matrices
+           across folds: github.com/VSainteuf/utae-paps
+

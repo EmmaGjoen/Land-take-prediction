@@ -1,0 +1,44 @@
+
+% K-slicing experiment: Sentinel-2, N=3 fixed input years, 5-fold geographic CV.
+% Pooled metrics sum confusion matrices across all folds before computing metrics
+% (every tile contributes equally regardless of fold size).
+% Macro mean/std are computed per-fold then averaged -- secondary diagnostic.
+
+\begin{table}[ht]
+  \centering
+  \caption{%
+    Effect of prediction horizon $K$ on land-take detection
+    (Sentinel-2, $N = 3$ input years, 5-fold geographic cross-validation).
+    $N$ is fixed to isolate the effect of $K$.
+    Metrics are pooled across folds~\citep{garnot2021pastis}.
+    Accuracy is inflated by class imbalance and is not the primary indicator.
+    The last column is the mean $\pm$ std IoU across folds.
+    Best value per column is \textbf{bold}.%
+  }
+  
+   \label{tab:k_slicing_old_(all_input_years)}
+  \begin{tabular}{ccccccl}
+    \toprule
+    $K$ (years) & IoU & F1 & Precision & Recall & Accuracy & $\text{IoU}_{\text{macro}} \pm \sigma$ \\
+    \midrule
+    1 & \textbf{0.474} & \textbf{0.643} & \textbf{0.718} & \textbf{0.582} & \textbf{0.919} & $0.462 \pm 0.057$ \\
+    2 & 0.334           & 0.501           & 0.646           & 0.409           & 0.898           & $0.345 \pm 0.078$ \\
+    3 & 0.327           & 0.493           & 0.571           & 0.434           & 0.888           & $0.320 \pm 0.029$ \\
+    4 & 0.221           & 0.362           & 0.523           & 0.277           & 0.877           & $0.193 \pm 0.073$ \\
+    5 & 0.131           & 0.232           & 0.207           & 0.263           & 0.778           & $0.113 \pm 0.056$ \\
+    \bottomrule
+  \end{tabular}
+
+  \label{tab:k_slicing}
+  \begin{tabular}{ccccccl}
+    \toprule
+    $K$ (years) & IoU & F1 & Precision & Recall & Accuracy & IoU mean $\pm$ std \\
+    \midrule
+    1 & \textbf{0.471} & \textbf{0.640} & \textbf{0.714} & \textbf{0.581} & \textbf{0.918} & $0.463 \pm 0.047$ \\
+    2 & 0.408           & 0.579           & 0.616           & 0.546           & 0.901           & $0.399 \pm 0.037$ \\
+    3 & 0.270           & 0.425           & 0.490           & 0.376           & 0.873           & $0.280 \pm 0.048$ \\
+    4 & 0.237           & 0.383           & 0.509           & 0.307           & 0.876           & $0.207 \pm 0.094$ \\
+    5 & 0.129           & 0.229           & 0.342           & 0.172           & 0.852           & $0.104 \pm 0.066$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}

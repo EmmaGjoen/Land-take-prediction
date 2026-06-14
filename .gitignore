@@ -17,8 +17,6 @@ venv/
 
 # Data
 data/*
-reports/figures/
-figures/
 *.tif
 *.tiff
 *.zip
@@ -45,6 +43,9 @@ build/
 # Weights & Biases
 wandb/
 *.wandb
+
+# Training outputs
+checkpoints/
 
 # Slurm and training logs
 logs/

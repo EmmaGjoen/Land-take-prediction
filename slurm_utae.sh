@@ -6,6 +6,7 @@
 # Usage:
 #   sbatch --export=K=2,INPUT_YEARS=4 slurm_utae.sh
 #   sbatch --export=K=1              slurm_utae.sh   # N=all
+#   sbatch --export=K=2,TAG=slicing,FOLDS_FILE=src/data/geographic_folds.csv slurm_utae.sh
 #
 # The SLURM_ARRAY_TASK_ID is used as the --fold argument (0–4).
 #
@@ -46,10 +47,14 @@ mkdir -p logs/utae_sentinel
 K=${K:-2}
 INPUT_YEARS=${INPUT_YEARS:-}
 FOLD=${SLURM_ARRAY_TASK_ID}
+FOLDS_FILE=${FOLDS_FILE:-}
+TAG=${TAG:-}
 
 echo "Prediction horizon K=${K}"
 echo "Input years N=${INPUT_YEARS:-all}"
 echo "Fold: ${FOLD}"
+echo "Folds file: ${FOLDS_FILE:-default}"
+echo "Tag: ${TAG:-none}"
 echo ""
 
 echo "GPU status:"
@@ -59,6 +64,12 @@ echo ""
 CMD="python train_utae.py --prediction_horizon $K --fold $FOLD"
 if [ -n "$INPUT_YEARS" ]; then
     CMD="$CMD --input_years $INPUT_YEARS"
+fi
+if [ -n "$FOLDS_FILE" ]; then
+    CMD="$CMD --folds-file $FOLDS_FILE"
+fi
+if [ -n "$TAG" ]; then
+    CMD="$CMD --tag $TAG"
 fi
 
 echo "Starting: $CMD"

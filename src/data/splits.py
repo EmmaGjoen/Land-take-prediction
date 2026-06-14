@@ -1,23 +1,15 @@
-"""
-Shared train/val/test split utilities for fair model comparison.
+"""Train/val/test split utilities.
 
-Two splitting strategies are provided:
+Two strategies:
 
-* **Random split** (``get_splits``): legacy 70/15/15 random split kept for
-  backward compatibility.
-* **Geographic 5-fold CV** (``create_geographic_folds``, ``get_fold_splits``):
-  tiles are clustered into five spatially compact groups via K-means on
-  (lon, lat) coordinates encoded in each refid.  This mirrors the approach
-  used in the PASTIS benchmark (Garnot & Landrieu, ICCV 2021) and avoids
-  spatial autocorrelation inflating test metrics.
+* ``get_splits``: legacy random 70/15/15 split.
+* ``create_geographic_folds`` + ``get_fold_splits``: geographic 5-fold CV
+  via K-means on (lon, lat). Follows the PASTIS benchmark approach
+  (Garnot & Landrieu, ICCV 2021) to avoid spatial autocorrelation.
 
 Typical workflow::
 
-    # Once, before training:
-    python scripts/create_folds.py   # → src/data/geographic_folds.csv
-
-    # At training time (fold 0 = test, fold 1 = val, folds 2-4 = train):
-    from src.data.splits import load_folds, get_fold_splits
+    python scripts/create_folds.py                         # run once
     folds = load_folds()
     train_ids, val_ids, test_ids = get_fold_splits(folds, test_fold=0)
 """
@@ -27,8 +19,7 @@ from pathlib import Path
 from typing import Tuple, Optional
 from sklearn.model_selection import train_test_split
 
-# Path where geographic fold assignments are persisted.
-# Small CSV (~10 KB) committed to the repository for full reproducibility.
+# Pre-computed fold assignments CSV, committed for reproducibility.
 FOLDS_PATH = Path(__file__).parent / "geographic_folds_2017.csv"
 
 
@@ -39,31 +30,7 @@ def get_splits(
     test_ratio: float = 0.15,
     random_state: int = 42,
 ) -> Tuple[list[str], list[str], list[str]]:
-    """
-    Split reference IDs into train/val/test sets with fixed random seed.
-    
-    This function ensures reproducible splits across different notebooks and models,
-    enabling fair baseline comparison under identical data conditions.
-    
-    Args:
-        ref_ids: List of reference IDs (e.g., tile identifiers)
-        train_ratio: Proportion of data for training (default: 0.7)
-        val_ratio: Proportion of data for validation (default: 0.15)
-        test_ratio: Proportion of data for testing (default: 0.15)
-        random_state: Random seed for reproducibility (default: 42)
-    
-    Returns:
-        Tuple of (train_ref_ids, val_ref_ids, test_ref_ids)
-    
-    Raises:
-        ValueError: If ratios don't sum to 1.0
-    
-    Example:
-        >>> ref_ids = ["tile_001", "tile_002", ..., "tile_034"]
-        >>> train_ids, val_ids, test_ids = get_splits(ref_ids)
-        >>> len(train_ids), len(val_ids), len(test_ids)
-        (23, 5, 5)  # For 34 total tiles with 70/15/15 split
-    """
+    """Split reference IDs into train/val/test with a fixed random seed."""
     if not abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6:
         raise ValueError(
             f"Ratios must sum to 1.0, got {train_ratio + val_ratio + test_ratio}"
@@ -86,34 +53,6 @@ def get_splits(
     )
     
     return train_ref_ids, val_ref_ids, test_ref_ids
-
-
-def get_ref_ids_from_directory(
-    directory: Path,
-    pattern: str = "*_RGBNIRRSWIRQ_Mosaic.tif",
-    exclude_suffix: str = "_RGBNIRRSWIRQ_Mosaic",
-) -> list[str]:
-    """
-    Extract reference IDs from filenames in a directory.
-    
-    Args:
-        directory: Directory containing data files
-        pattern: Glob pattern to match files (default: Sentinel pattern)
-        exclude_suffix: Suffix to remove from filenames to get ref_id
-    
-    Returns:
-        Sorted list of reference IDs
-    
-    Example:
-        >>> from src.config import SENTINEL_DIR
-        >>> ref_ids = get_ref_ids_from_directory(SENTINEL_DIR)
-        >>> ref_ids[:3]
-        ['R101C117', 'R101C118', 'R101C119']
-    """
-    directory = Path(directory)
-    files = sorted(directory.glob(pattern))
-    ref_ids = [f.stem.replace(exclude_suffix, "") for f in files]
-    return ref_ids
 
 
 # ── Geographic k-fold cross-validation ──────────────────────────────────────
@@ -151,11 +90,10 @@ def create_geographic_folds(
     n_folds: int = 5,
     random_state: int = 42,
 ) -> dict[str, int]:
-    """Cluster tiles into spatially separated folds using K-means on coordinates.
+    """Cluster tiles into geographic folds using K-means on coordinates.
 
-    Produces ``n_folds`` geographically compact groups, mirroring the approach
-    used in the PASTIS benchmark.  A fixed ``random_state`` ensures that the
-    same fold structure is produced every time.
+    Produces ``n_folds`` spatially compact groups, following the PASTIS
+    benchmark approach.
 
     Args:
         refids: Tile reference IDs whose coordinates are encoded in the ID.
@@ -175,7 +113,7 @@ def create_geographic_folds(
 
 
 def save_folds(fold_assignments: dict[str, int], path: Path = FOLDS_PATH) -> None:
-    """Persist fold assignments to a CSV file for reproducible reuse.
+    """Save fold assignments to a CSV file.
 
     Args:
         fold_assignments: Mapping returned by :func:`create_geographic_folds`.

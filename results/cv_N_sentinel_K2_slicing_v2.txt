@@ -1,0 +1,35 @@
+
+Connecting to WandB: nina_prosjektoppgave/data_variasjon_utae
+  Fetching group: UTAE_sentinel_K2_N1_slicing_v2 ... 5 run(s) found
+  Fetching group: UTAE_sentinel_K2_N2_slicing_v2 ... 5 run(s) found
+  Fetching group: UTAE_sentinel_K2_N3_slicing_v2 ... 5 run(s) found
+  Fetching group: UTAE_sentinel_K2_N4_slicing_v2 ... 5 run(s) found
+  Fetching group: UTAE_sentinel_K2_Nall_slicing_v2 ... 5 run(s) found
+
+Slicing experiment: SENTINEL, K=2, varying N
+
+Pooled metrics (primary). All tiles from all folds contribute equally, regardless of fold size
+=============================================================================
+         N  Folds      F1      Precision     Recall       IoU       Accuracy 
+=============================================================================
+N=1           5/5    0.1909      0.1939      0.1880      0.1055      0.8002  
+N=2           5/5    0.5252      0.6373      0.4466      0.3561      0.8988  
+N=3           5/5    0.5859      0.6732      0.5186      0.4143      0.9081  
+N=4           5/5    0.5310      0.5859      0.4855      0.3614      0.8925  
+N=all         5/5    0.5007      0.6458      0.4088      0.3339      0.8978  
+=============================================================================
+
+Macro mean +/- std (secondary / diagnostic, unequal fold sizes affect reliability)
+=====================================================================================================================
+         N  Folds          F1              Precision             Recall               IoU               Accuracy     
+=====================================================================================================================
+N=1           5/5    0.1685±0.0863       0.2045±0.1470       0.1829±0.1224       0.0939±0.0516       0.7934±0.0768   
+N=2           5/5    0.5317±0.0822       0.6390±0.0698       0.4714±0.1191       0.3655±0.0741       0.9007±0.0145   
+N=3           5/5    0.5745±0.0412       0.6703±0.0446       0.5037±0.0459       0.4040±0.0408       0.9090±0.0061   
+N=4           5/5    0.5512±0.0636       0.6410±0.1180       0.4885±0.0357       0.3825±0.0583       0.9003±0.0289   
+N=all         5/5    0.5086±0.0884       0.6560±0.1046       0.4365±0.1186       0.3447±0.0777       0.9000±0.0113   
+=====================================================================================================================
+
+Reference: Garnot & Landrieu (ICCV 2021), pooled confusion matrices
+           across folds: github.com/VSainteuf/utae-paps
+

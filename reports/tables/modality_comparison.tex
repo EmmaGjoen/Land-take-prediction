@@ -1,0 +1,25 @@
+
+% Modality comparison: K=2, N=3 input years, 5-fold geographic CV.
+% Pooled metrics sum confusion matrices across all folds before computing metrics.
+% IoU +/- std: pooled IoU with fold-level standard deviation.
+
+\begin{table}[ht]
+  \centering
+  \caption{%
+    U-TAE land-take detection performance by input modality
+    ($K = 2$, $N = 3$ input years, 5-fold geographic cross-validation).
+    Metrics are pooled across folds~\citep{garnot2021pastis}.
+    IoU $\pm$ std denotes the pooled IoU with fold-level standard deviation.
+    Best value per column is \textbf{bold}.%
+  }
+  \label{tab:modality_comparison}
+  \begin{tabular}{lccccc}
+    \toprule
+    Modality   & IoU $\pm$ std & F1 & Precision & Recall & Accuracy \\
+    \midrule
+    Sentinel-2  & $0.399 \pm 0.044$ & 0.570           & \textbf{0.691} & 0.486           & 0.910           \\
+    AlphaEarth  & $0.413 \pm 0.061$ & 0.584           & 0.628           & \textbf{0.547} & 0.905           \\
+    GeoTessera  & $\mathbf{0.416} \pm 0.088$ & \textbf{0.588} & 0.677           & 0.519           & \textbf{0.911} \\
+    \bottomrule
+  \end{tabular}
+\end{table}

@@ -1,4 +1,7 @@
+"""Train U-TAE on Sentinel-2 time series for land take segmentation."""
+import json
 import os
+import subprocess
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
@@ -20,7 +23,8 @@ sys.path.append(str(root))
 
 from src.config import SENTINEL_DIR, MASK_DIR
 from src.data.sentinel_dataset import SentinelDataset
-from src.data.splits import get_splits, get_ref_ids_from_directory, load_folds, get_fold_splits
+from src.data.file_helpers import get_ref_ids_from_directory
+from src.data.splits import get_splits, load_folds, get_fold_splits
 from src.utils.training import set_random_seeds, get_device
 from src.data.transform import (
     compute_normalization_stats,
@@ -63,10 +67,11 @@ CONFIG = {
     "focal_gamma": 2.0,             # focusing parameter for focal loss (Lin et al., 2017)
 
     # Training
-    "epochs": 75,
+    "epochs": 150,
     "learning_rate": 1e-3,
-    "lr_patience": 7,               # epochs with no val_loss improvement before LR halves
+    "lr_patience": 12,              # epochs with no val_loss improvement before LR halves
     "lr_factor": 0.5,               # multiply LR by this when patience runs out
+    "early_stopping_patience": 30,  # Epochs without val IoU improvement before stopping
     "batch_size": 4,
     "augment_train": True,  # Enable spatial augmentation (flips, rotations)
     
@@ -97,10 +102,18 @@ def main():
         "--fold", type=int, default=None, choices=range(5), metavar="0-4",
         help=(
             "Geographic fold to use as test set (0-4).  "
-            "Requires src/data/geographic_folds.csv — run scripts/create_folds.py first.  "
+            "Requires src/data/geographic_folds.csv, run scripts/create_folds.py first.  "
             "Val = (fold+1) %% 5; train = remaining folds.  "
             "If omitted, falls back to the legacy random 70/15/15 split."
         ),
+    )
+    parser.add_argument(
+        "--folds-file", type=Path, default=None,
+        help="Path to folds CSV (default: src/data/geographic_folds.csv).",
+    )
+    parser.add_argument(
+        "--tag", type=str, default="",
+        help="Optional tag appended to WandB group name (e.g. 'slicing' or 'modality').",
     )
     args = parser.parse_args()
     if args.prediction_horizon is not None:
@@ -114,23 +127,46 @@ def main():
     # Set random seeds
     torch.use_deterministic_algorithms(True, warn_only=True)
     set_random_seeds(CONFIG["random_seed"])
-    
+
     device = get_device()
-    
+
+    # ------------------------------------------------------------------ #
+    # CHECKPOINT SETUP                                                     #
+    # ------------------------------------------------------------------ #
+    n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
+    fold_label = f"_fold{args.fold}" if args.fold is not None else ""
+    run_name = f"utae_sentinel_K{CONFIG['prediction_horizon']}_N{n_label}{fold_label}"
+    checkpoint_dir = Path("checkpoints") / run_name
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Checkpoints will be saved to: {checkpoint_dir}")
+
+    try:
+        git_hash = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        git_hash = "unknown"
+    print(f"Git commit: {git_hash}")
+
+    config_snapshot = {**CONFIG, "git_commit": git_hash}
+    (checkpoint_dir / "config.json").write_text(
+        json.dumps(config_snapshot, indent=2, default=str)
+    )
+    print(f"Config saved to: {checkpoint_dir / 'config.json'}")
+
     # Get data splits
     print("\n" + "="*80)
     print("DATA SPLITS")
     print("="*80)
     all_ref_ids = get_ref_ids_from_directory(SENTINEL_DIR)
     print(f"Total reference IDs found in Sentinel dir: {len(all_ref_ids)}")
-    # Keep only tiles that also have a mask - new coarse masks don't cover all old Sentinel tiles
+    # Keep only tiles that also have a mask
     all_ref_ids = [fid for fid in all_ref_ids if list(MASK_DIR.glob(f"{fid}*.tif"))]
     print(f"After filtering to tiles with masks: {len(all_ref_ids)}")
 
     if CONFIG["fold"] is not None:
-        # Geographic 5-fold CV: load pre-computed fold assignments and filter
-        # to tiles available on disk so all modalities see the same tile pool.
-        fold_assignments = load_folds()
+        # Geographic 5-fold CV: filter folds to tiles on disk
+        fold_assignments = load_folds(path=args.folds_file) if args.folds_file else load_folds()
         fold_assignments = {r: f for r, f in fold_assignments.items() if r in set(all_ref_ids)}
         train_ref_ids, val_ref_ids, test_ref_ids = get_fold_splits(fold_assignments, CONFIG["fold"])
         print(f"✓ Geographic 5-fold CV  (test_fold={CONFIG['fold']}, val_fold={(CONFIG['fold']+1)%5})")
@@ -228,9 +264,9 @@ def main():
     )
     
     print(f"Datasets created for {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
-    print(f"  Train: {len(train_ds)} chips (augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'})")
-    print(f"  Val:   {len(val_ds)} chips")
-    print(f"  Test:  {len(test_ds)} chips")
+    print(f"  Train: {len(train_ref_ids)} input → {len(train_ds)} usable ({len(train_ref_ids) - len(train_ds)} excluded) | augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'}")
+    print(f"  Val:   {len(val_ref_ids)} input → {len(val_ds)} usable ({len(val_ref_ids) - len(val_ds)} excluded)")
+    print(f"  Test:  {len(test_ref_ids)} input → {len(test_ds)} usable ({len(test_ref_ids) - len(test_ds)} excluded)")
     
     # Create dataloaders
     def worker_init_fn(worker_id):
@@ -299,25 +335,22 @@ def main():
     print("\n" + "="*80)
     model = model.to(device)
     
-    # --- WARM-UP PASS ---
-    print("Initializing U-TAE dynamic shapes to prevent AMP bug.")
-    model.eval() # Set to eval to avoid affecting BatchNorm
+    # Warm-up pass in FP32 to init U-TAE dynamic shapes before any AMP context
+    print("Initializing U-TAE dynamic shapes (FP32 warm-up)...")
+    model.eval()
     with torch.no_grad():
-        # Create a single FP32 dummy batch matching your chip dimensions
         dummy_x = torch.zeros(1, T, C, H, W, device=device)
         dummy_pos = torch.zeros(1, T, dtype=torch.long, device=device)
-        
-        # Run it through the model OUTSIDE of the autocast context
         _ = model(dummy_x, batch_positions=dummy_pos)
-    print("✓ U-TAE shapes initialized safely in FP32")
-    # -----------------------------
+    print("✓ Warm-up complete")
 
 
     print("WANDB INITIALIZATION")
     print("="*80)
     n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
     fold_label = f"_fold{CONFIG['fold']}" if CONFIG["fold"] is not None else ""
-    group_name = f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}"
+    tag_suffix = f"_{args.tag}" if args.tag else ""
+    group_name = f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}{tag_suffix}"
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
@@ -327,6 +360,7 @@ def main():
             "architecture": CONFIG["architecture"],
             "dataset": train_ds.DATASET_NAME,
             "input_modality": "sentinel_only",
+            "experiment_tag": args.tag or None,
             "num_timesteps": T,
             "prediction_horizon_K": CONFIG["prediction_horizon"],
             "input_years_N": CONFIG["input_years"],
@@ -344,13 +378,15 @@ def main():
             "normalization": CONFIG["normalization"],
             "loss": "focal_loss",
             "focal_gamma": CONFIG["focal_gamma"],
-            "train_tiles": len(train_ref_ids),
-            "val_tiles": len(val_ref_ids),
-            "test_tiles": len(test_ref_ids),
-            "train_chips": len(train_ds),
-            "val_chips": len(val_ds),
-            "test_chips": len(test_ds),
+            "train_tiles_input": len(train_ref_ids),
+            "train_tiles_used": len(train_ds),
+            "val_tiles_input": len(val_ref_ids),
+            "val_tiles_used": len(val_ds),
+            "test_tiles_input": len(test_ref_ids),
+            "test_tiles_used": len(test_ds),
+            "early_stopping_patience": CONFIG["early_stopping_patience"],
             "random_seed": CONFIG["random_seed"],
+            "git_commit": git_hash,
         },
     )
     print("✓ WandB initialized")
@@ -359,7 +395,9 @@ def main():
     print("\n" + "="*80)
     print("TRAINING")
     print("="*80)
-    
+
+    best_val_iou = 0.0
+    epochs_without_improvement = 0
     for epoch in range(CONFIG["epochs"]):
         # Training
         model.train()
@@ -403,9 +441,16 @@ def main():
         avg_val_loss = val_loss / len(val_loader)
         val_metrics = compute_metrics_from_confusion(sum_tp, sum_fp, sum_tn, sum_fn)
 
-        # Step LR scheduler - halves LR if val_loss hasn't improved for lr_patience epochs
+        # Halve LR if val_loss hasn't improved for lr_patience epochs
         scheduler.step(avg_val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
+
+        if val_metrics["iou"] > best_val_iou:
+            best_val_iou = val_metrics["iou"]
+            epochs_without_improvement = 0
+            torch.save(model.state_dict(), checkpoint_dir / "best_model.pth")
+        else:
+            epochs_without_improvement += 1
 
         # Log to WandB
         run.log({
@@ -432,11 +477,22 @@ def main():
             f"Acc={val_metrics['accuracy']:.4f}"
         )
 
-    
-    # Test set evaluation
+        if epochs_without_improvement >= CONFIG["early_stopping_patience"]:
+            print(
+                f"\nEarly stopping: no val IoU improvement for "
+                f"{CONFIG['early_stopping_patience']} epochs (stopped at epoch {epoch + 1})."
+            )
+            break
+
+    torch.save(model.state_dict(), checkpoint_dir / "final_model.pth")
+    print(f"\nBest model (val_IoU={best_val_iou:.4f}) -> {checkpoint_dir / 'best_model.pth'}")
+    print(f"Final model -> {checkpoint_dir / 'final_model.pth'}")
+
+    # Test evaluation using the best checkpoint
     print("\n" + "="*80)
     print("TEST SET EVALUATION")
     print("="*80)
+    model.load_state_dict(torch.load(checkpoint_dir / "best_model.pth", map_location=device))
     model.eval()
     test_loss = 0.0
     sum_tp = sum_fp = sum_tn = sum_fn = 0
@@ -476,11 +532,16 @@ def main():
         "test_precision": test_metrics['precision'],
         "test_recall": test_metrics['recall'],
         "test_accuracy": test_metrics['accuracy'],
+        # Raw confusion matrix totals, used for pooled aggregation across folds
+        "test_tp": int(sum_tp),
+        "test_fp": int(sum_fp),
+        "test_tn": int(sum_tn),
+        "test_fn": int(sum_fn),
     })
     
     # Log combined masks from multiple test batches
     print("\nLogging test set masks...")
-    log_masks(model, test_loader, device, step=CONFIG["epochs"], name_prefix="test", max_batches=10)
+    log_masks(model, test_loader, device, name_prefix="test", max_batches=10)
     
     # Finish WandB
     run.finish()

@@ -1,20 +1,12 @@
-"""U-TAE trained on GeoTessera embeddings only (no Sentinel imagery).
+"""Train U-TAE on TESSERA embeddings (128-band, no Sentinel-2).
 
-This script trains the U-TAE temporal attention model using 128-band
-GeoTessera embeddings as the sole input modality.  It is the counterpart
-to ``train_utae.py`` (Sentinel-only) and is intended for a direct
-modality-comparison experiment in the master's thesis.
-
-Usage::
-
-    python train_utae_tessera.py [--prediction_horizon K] [--input_years N]
-
-The ``--prediction_horizon`` (K) and ``--input_years`` (N) arguments mirror
-those in ``train_utae.py`` so that identical temporal settings can be
-applied across both modalities.
+Counterpart to train_utae.py for the modality comparison experiment.
+Same --prediction_horizon (K) and --input_years (N) interface.
 """
 
+import json
 import os
+import subprocess
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
@@ -34,11 +26,10 @@ import wandb
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from src.config import MASK_DIR, TESSERA_DIR
-from src.data.tessera_segmentation_dataset import TesseraSegmentationDataset
+from src.config import MASK_DIR, TESSERA_DIR, TESSERA_YEARS
+from src.data.tessera_dataset import TesseraDataset
 from src.data.splits import get_splits, load_folds, get_fold_splits
 from src.utils.training import set_random_seeds, get_device
-from src.data.file_helpers import get_ref_ids_from_tessera_dir
 from src.data.transform import (
     ComposeTS,
     RandomCropTS,
@@ -71,17 +62,18 @@ CONFIG = {
 
     # Data
     "chip_size": 64,
-    "prediction_horizon": 2,    # K: zero timesteps from (endYear − K) onwards
-    "input_years": None,        # N: keep startYear + latest N−1 years; None = all
+    "prediction_horizon": 2,    # K: zero out the last K years
+    "input_years": None,        # N: keep start_year + latest N-1 years; None = all
 
     # Loss
     "focal_gamma": 2.0,         # Focal loss focusing parameter (Lin et al., 2017)
 
     # Training
-    "epochs": 75,
+    "epochs": 150,
     "learning_rate": 1e-3,
-    "lr_patience": 7,           # Epochs without val_loss improvement before LR halves
+    "lr_patience": 12,          # Epochs without val_loss improvement before LR halves
     "lr_factor": 0.5,
+    "early_stopping_patience": 30,  # Epochs without val IoU improvement before stopping
     "batch_size": 4,
     "augment_train": True,      # Random flips + 90° rotations
 
@@ -97,9 +89,13 @@ CONFIG = {
 }
 
 
+# ============================================================================
+# MAIN
+# ============================================================================
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Train U-TAE on GeoTessera embeddings (no Sentinel data)."
+        description="Train U-TAE on TESSERA embeddings (no Sentinel-2 data)."
     )
     parser.add_argument(
         "--prediction_horizon", type=int, default=None,
@@ -113,10 +109,18 @@ def main() -> None:
         "--fold", type=int, default=None, choices=range(5), metavar="0-4",
         help=(
             "Geographic fold to use as test set (0-4).  "
-            "Requires src/data/geographic_folds.csv — run scripts/create_folds.py first.  "
+            "Requires src/data/geographic_folds.csv; run scripts/create_folds.py first.  "
             "Val = (fold+1) %% 5; train = remaining folds.  "
             "If omitted, falls back to the legacy random 70/15/15 split."
         ),
+    )
+    parser.add_argument(
+        "--folds-file", type=Path, default=None,
+        help="Path to folds CSV (default: src/data/geographic_folds.csv).",
+    )
+    parser.add_argument(
+        "--tag", type=str, default="",
+        help="Optional tag appended to WandB group name (e.g. 'slicing' or 'modality').",
     )
     args = parser.parse_args()
 
@@ -133,13 +137,37 @@ def main() -> None:
     device = get_device()
 
     # ------------------------------------------------------------------ #
+    # CHECKPOINT SETUP                                                     #
+    # ------------------------------------------------------------------ #
+    n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
+    fold_label = f"_fold{args.fold}" if args.fold is not None else ""
+    run_name = f"utae_tessera_K{CONFIG['prediction_horizon']}_N{n_label}{fold_label}"
+    checkpoint_dir = Path("checkpoints") / run_name
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Checkpoints will be saved to: {checkpoint_dir}")
+
+    try:
+        git_hash = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        git_hash = "unknown"
+    print(f"Git commit: {git_hash}")
+
+    config_snapshot = {**CONFIG, "git_commit": git_hash}
+    (checkpoint_dir / "config.json").write_text(
+        json.dumps(config_snapshot, indent=2, default=str)
+    )
+    print(f"Config saved to: {checkpoint_dir / 'config.json'}")
+
+    # ------------------------------------------------------------------ #
     # DATA SPLITS                                                          #
     # ------------------------------------------------------------------ #
     print("\n" + "=" * 80)
     print("DATA SPLITS")
     print("=" * 80)
 
-    all_ref_ids = TesseraSegmentationDataset.get_ref_ids(TESSERA_DIR)
+    all_ref_ids = TesseraDataset.get_ref_ids(TESSERA_DIR)
     print(f"Unique REFIDs found in TESSERA_DIR: {len(all_ref_ids)}")
 
     # Keep only tiles that also have a mask file
@@ -147,9 +175,8 @@ def main() -> None:
     print(f"After filtering to tiles with masks: {len(all_ref_ids)}")
 
     if CONFIG["fold"] is not None:
-        # Geographic 5-fold CV: load pre-computed fold assignments and filter
-        # to tiles available on disk so all modalities see the same tile pool.
-        fold_assignments = load_folds()
+        # Geographic 5-fold CV: filter folds to tiles on disk
+        fold_assignments = load_folds(path=args.folds_file) if args.folds_file else load_folds()
         fold_assignments = {r: f for r, f in fold_assignments.items() if r in set(all_ref_ids)}
         train_ref_ids, val_ref_ids, test_ref_ids = get_fold_splits(fold_assignments, CONFIG["fold"])
         print(f"✓ Geographic 5-fold CV  (test_fold={CONFIG['fold']}, val_fold={(CONFIG['fold']+1)%5})")
@@ -166,9 +193,11 @@ def main() -> None:
     print(f"Train tiles: {len(train_ref_ids)} (~{100 * len(train_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Val tiles:   {len(val_ref_ids)} (~{100 * len(val_ref_ids) / len(all_ref_ids):.0f}%)")
     print(f"Test tiles:  {len(test_ref_ids)} (~{100 * len(test_ref_ids) / len(all_ref_ids):.0f}%)")
-    print(f"✓ Using SHARED splits with U-TAE Sentinel baseline (random_state={CONFIG['random_seed']})")
+    print(f"  TESSERA years: {TESSERA_YEARS[0]}-{TESSERA_YEARS[-1]}")
 
-   
+    # ------------------------------------------------------------------ #
+    # DATASETS                                                             #
+    # ------------------------------------------------------------------ #
     print("\n" + "=" * 80)
     print("DATASETS")
     print("=" * 80)
@@ -193,20 +222,20 @@ def main() -> None:
         input_years=CONFIG["input_years"],
     )
 
-    train_ds = TesseraSegmentationDataset(
+    train_ds = TesseraDataset(
         train_ref_ids, transform=train_transform, **shared_ds_kwargs
     )
-    val_ds = TesseraSegmentationDataset(
+    val_ds = TesseraDataset(
         val_ref_ids, transform=eval_transform, **shared_ds_kwargs
     )
-    test_ds = TesseraSegmentationDataset(
+    test_ds = TesseraDataset(
         test_ref_ids, transform=eval_transform, **shared_ds_kwargs
     )
 
     print(f"✓ Datasets created for {CONFIG['chip_size']}×{CONFIG['chip_size']} chips")
-    print(f"  Train: {len(train_ds)} chips (augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'})")
-    print(f"  Val:   {len(val_ds)} chips")
-    print(f"  Test:  {len(test_ds)} chips")
+    print(f"  Train: {len(train_ref_ids)} input → {len(train_ds)} usable ({len(train_ref_ids) - len(train_ds)} excluded) | augmentation: {'flips + rotations' if CONFIG['augment_train'] else 'none'}")
+    print(f"  Val:   {len(val_ref_ids)} input → {len(val_ds)} usable ({len(val_ref_ids) - len(val_ds)} excluded)")
+    print(f"  Test:  {len(test_ref_ids)} input → {len(test_ds)} usable ({len(test_ref_ids) - len(test_ds)} excluded)")
 
     # ------------------------------------------------------------------ #
     # DATALOADERS                                                          #
@@ -260,7 +289,7 @@ def main() -> None:
     )
 
     print(f"✓ U-TAE model created")
-    print(f"  Input modality: GeoTessera embeddings (no Sentinel)")
+    print(f"  Input: TESSERA embeddings (no Sentinel-2)")
     print(f"  Channels (C):   {C}  (128 per TESSERA year)")
     print(f"  Timesteps (T):  {T}  (annual)")
     print(f"  Classes:        {CONFIG['num_classes']}")
@@ -280,9 +309,8 @@ def main() -> None:
     model = model.to(device)
     criterion = criterion.to(device)
 
-    # Warm-up pass in FP32 to initialise U-TAE's dynamic shapes before
-    # any AMP context, preventing shape-mismatch bugs on the first forward.
-    print("Initialising U-TAE dynamic shapes (FP32 warm-up pass)...")
+    # Warm-up pass in FP32 to init U-TAE dynamic shapes before any AMP context
+    print("Initializing U-TAE dynamic shapes (FP32 warm-up)...")
     model.eval()
     with torch.no_grad():
         dummy_x = torch.zeros(1, T, C, H, W, device=device)
@@ -299,7 +327,8 @@ def main() -> None:
 
     n_label = CONFIG["input_years"] if CONFIG["input_years"] is not None else "all"
     fold_label = f"_fold{CONFIG['fold']}" if CONFIG["fold"] is not None else ""
-    group_name = f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}"
+    tag_suffix = f"_{args.tag}" if args.tag else ""
+    group_name = f"UTAE_{train_ds.DATASET_NAME}_K{CONFIG['prediction_horizon']}_N{n_label}{tag_suffix}"
     run = wandb.init(
         entity=CONFIG["wandb_entity"],
         project=CONFIG["wandb_project"],
@@ -309,6 +338,7 @@ def main() -> None:
             "architecture": CONFIG["architecture"],
             "dataset": train_ds.DATASET_NAME,
             "input_modality": "tessera_only",
+            "experiment_tag": args.tag or None,
             "tessera_channels": C,
             "num_timesteps": T,
             "prediction_horizon_K": CONFIG["prediction_horizon"],
@@ -327,13 +357,15 @@ def main() -> None:
             "normalization": CONFIG["normalization"],
             "loss": "focal_loss",
             "focal_gamma": CONFIG["focal_gamma"],
-            "train_tiles": len(train_ref_ids),
-            "val_tiles": len(val_ref_ids),
-            "test_tiles": len(test_ref_ids),
-            "train_chips": len(train_ds),
-            "val_chips": len(val_ds),
-            "test_chips": len(test_ds),
+            "train_tiles_input": len(train_ref_ids),
+            "train_tiles_used": len(train_ds),
+            "val_tiles_input": len(val_ref_ids),
+            "val_tiles_used": len(val_ds),
+            "test_tiles_input": len(test_ref_ids),
+            "test_tiles_used": len(test_ds),
+            "early_stopping_patience": CONFIG["early_stopping_patience"],
             "random_seed": CONFIG["random_seed"],
+            "git_commit": git_hash,
         },
     )
     print("✓ WandB initialised")
@@ -345,6 +377,8 @@ def main() -> None:
     print("TRAINING")
     print("=" * 80)
 
+    best_val_iou = 0.0
+    epochs_without_improvement = 0
     for epoch in range(CONFIG["epochs"]):
         # ---- Train ---- #
         model.train()
@@ -388,6 +422,13 @@ def main() -> None:
         scheduler.step(avg_val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
+        if val_metrics["iou"] > best_val_iou:
+            best_val_iou = val_metrics["iou"]
+            epochs_without_improvement = 0
+            torch.save(model.state_dict(), checkpoint_dir / "best_model.pth")
+        else:
+            epochs_without_improvement += 1
+
         run.log({
             "epoch": epoch + 1,
             "avg_train_loss": avg_train_loss,
@@ -411,6 +452,17 @@ def main() -> None:
             f"Acc={val_metrics['accuracy']:.4f}"
         )
 
+        if epochs_without_improvement >= CONFIG["early_stopping_patience"]:
+            print(
+                f"\nEarly stopping: no val IoU improvement for "
+                f"{CONFIG['early_stopping_patience']} epochs (stopped at epoch {epoch + 1})."
+            )
+            break
+
+    torch.save(model.state_dict(), checkpoint_dir / "final_model.pth")
+    print(f"\nBest model (val_IoU={best_val_iou:.4f}) -> {checkpoint_dir / 'best_model.pth'}")
+    print(f"Final model -> {checkpoint_dir / 'final_model.pth'}")
+
     # ------------------------------------------------------------------ #
     # TEST EVALUATION                                                      #
     # ------------------------------------------------------------------ #
@@ -418,6 +470,8 @@ def main() -> None:
     print("TEST SET EVALUATION")
     print("=" * 80)
 
+    # Test evaluation using the best checkpoint
+    model.load_state_dict(torch.load(checkpoint_dir / "best_model.pth", map_location=device))
     model.eval()
     test_loss = 0.0
     sum_tp = sum_fp = sum_tn = sum_fn = 0
@@ -454,10 +508,15 @@ def main() -> None:
         "test_precision": test_metrics["precision"],
         "test_recall": test_metrics["recall"],
         "test_accuracy": test_metrics["accuracy"],
+        # Raw confusion matrix totals, used for pooled aggregation across folds
+        "test_tp": int(sum_tp),
+        "test_fp": int(sum_fp),
+        "test_tn": int(sum_tn),
+        "test_fn": int(sum_fn),
     })
 
     print("\nLogging test set masks to WandB...")
-    log_masks(model, test_loader, device, step=CONFIG["epochs"], name_prefix="test", max_batches=10)
+    log_masks(model, test_loader, device, name_prefix="test", max_batches=10)
 
     run.finish()
 

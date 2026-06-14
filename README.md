@@ -1,65 +1,77 @@
-# Land-take Prediction
+# Predicting Land Take Using Satellite Image Time Series: Prediction Horizons, Temporal Sequence Length and Data Representations
 
-Master's thesis at NTNU in collaboration with NINA. The project compares three input modalities for binary land-take segmentation using U-TAE: raw Sentinel-2 imagery, GeoTessera embeddings, and AlphaEarth embeddings.
+**Emma Gjøen and Cecilia Møller Blom**  
+Master's Thesis in Computer Science, NTNU, June 2026
+
+We compare three input representations for binary land take segmentation with U-TAE: raw Sentinel-2 time series, TESSERA embeddings, and AlphaEarth embeddings. Evaluation uses geographic 5-fold cross-validation with pooled confusion-matrix aggregation following the PASTIS protocol.
 
 ## Data
 
-All data lives on IDUN and is gitignored. The required layout is:
+All data lives on IDUN and is gitignored. Expected layout:
 
 ```
 data/
   raw/
     Sentinel_v2/                  Sentinel-2 mosaics (9 bands, bi-annual, 2016-2024)
     Land_take_masks_coarse/       Binary change masks (~261 tiles)
-    AlphaEarth/                   AlphaEarth embeddings (64 dims/year, 2018-2024)
+    AlphaEarth_v2/                AlphaEarth embeddings (64 dims/year, 2017-2024)
     annotations_metadata_final.csv
   processed/
     tessera/
-      snapped_to_mask_grid/       GeoTessera embeddings aligned to mask grid (2017-2024)
+      snapped_to_mask_grid/       TESSERA embeddings aligned to mask grid (128 dims/year, 2017-2024)
 ```
 
-## Project Structure
+## Repository structure
 
 ```
-scripts/
-  create_folds.py                 Generate geographic 5-fold CV assignments (run once)
-  fetch_tessera_for_masks.py      Download and snap GeoTessera embeddings to mask grid
-  analyze_multi_tile_coverage.py  Check tessera coverage across tiles
-  generate_tessera_summary.py     Print per-tile embedding coverage summary
-  verify_one_mask_by_index.py     Verify spatial alignment for a single tile (used by SLURM array)
-  summarize_verification.py       Aggregate verification results
-  eda_tessera.py                  Exploratory analysis of tessera embeddings
-
 src/
-  config.py                       All paths and shared constants
+  config.py                       Paths, shared constants, year ranges
   data/
     sentinel_dataset.py           Sentinel-2 time series dataset
-    tessera_segmentation_dataset.py  GeoTessera dataset
-    alphaearth_segmentation_dataset.py  AlphaEarth dataset
-    splits.py                     Geographic 5-fold CV and legacy random split utilities
-    transform.py                  Shared transforms (crop, flip, normalize)
-    geographic_folds.csv          Pre-computed fold assignments (committed)
-  models/
-    external/
-      utae.py                     U-TAE model
-      backbones/                  LTAE and ConvLSTM backbones
+    tessera_dataset.py            TESSERA embedding dataset
+    alphaearth_dataset.py         AlphaEarth embedding dataset
+    splits.py                     Geographic 5-fold CV and legacy random split
+    transform.py                  Crop, flip, normalisation
+    file_helpers.py               Shared filename / refid utilities
+    geographic_folds_2017.csv     Pre-computed fold assignments, 232 tiles (committed)
+  models/external/
+    utae.py                       U-TAE model
+    backbones/                    LTAE and ConvLSTM backbones
   utils/
-    training.py                   Shared set_random_seeds and get_device
+    training.py                   Seed and device helpers
     focal_loss.py                 Focal loss
     metrics.py                    Binary segmentation metrics
     visualization.py              WandB mask logging
 
+scripts/
+  create_folds.py                 Generate geographic 5-fold CV assignments (run once)
+  fetch_tessera_for_masks.py      Download and snap TESSERA embeddings to mask grid
+  aggregate_cv_results.py         Pool confusion matrices across folds from WandB
+  analyze_multi_tile_coverage.py  Check TESSERA coverage across tiles
+  analyze_epoch_stats.py          Print early-stopping and best-epoch statistics from WandB
+  generate_tessera_summary.py     Per-tile embedding coverage summary
+  eda_tessera.py                  Exploratory analysis of TESSERA embeddings
+  plot_iou_vs_k.py                Per-fold test IoU vs prediction horizon K
+  plot_iou_vs_n.py                Per-fold test IoU vs input years N
+  plot_qualitative_k.py           Qualitative visualisations for K-slicing experiment
+  plot_qualitative_n.py           Qualitative visualisations for N-slicing experiment
+  plot_qualitative_modality.py    Qualitative comparison across modalities
+
 train_utae.py                     Train U-TAE on Sentinel-2
-train_utae_tessera.py             Train U-TAE on GeoTessera embeddings
+train_utae_tessera.py             Train U-TAE on TESSERA embeddings
 train_utae_alphaearth.py          Train U-TAE on AlphaEarth embeddings
 
-slurm_utae.sh                     SLURM array job for Sentinel experiment (folds 0-4)
-slurm_utae_tessera.sh             SLURM array job for GeoTessera experiment
-slurm_utae_alphaearth.sh          SLURM array job for AlphaEarth experiment
-slurm_fetch_tessera.sh            Fetch GeoTessera embeddings
-slurm_generate_tessera_summary.sh Summarize tessera coverage
-slurm_verify_tessera_alignment_array.sh  Verify tessera alignment (array job)
-slurm_eda_tessera.sh              Run tessera EDA
+submit_modality_v3.sh             Submit modality experiment across all three modalities
+
+slurm_utae.sh                     SLURM array job, Sentinel-2 experiment (folds 0-4)
+slurm_utae_tessera.sh             SLURM array job, TESSERA experiment
+slurm_utae_alphaearth.sh          SLURM array job, AlphaEarth experiment
+slurm_aggregate.sh                Aggregate K-slicing or N-slicing results from WandB
+slurm_aggregate_modality_v3.sh    Aggregate modality experiment results (modality_v3 tag)
+slurm_fetch_tessera.sh            Fetch TESSERA embeddings
+slurm_generate_tessera_summary.sh Summarise TESSERA coverage
+slurm_eda_tessera.sh              Run TESSERA EDA
+slurm_plot_qualitative.sh         Run all qualitative plot scripts
 ```
 
 ## Setup
@@ -80,23 +92,22 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Add your WandB key:
+Add a WandB key:
 
 ```bash
 echo "WANDB_API_KEY=your_key_here" > .env
 ```
 
-## Before Training
+## Before training
 
-Run once to generate the geographic fold assignments:
+Generate the geographic fold assignments once. The output is committed so all
+experiments share identical splits.
 
 ```bash
 python scripts/create_folds.py
 ```
 
-This writes `src/data/geographic_folds.csv` and prints per-fold tile counts and coordinate ranges. Commit the file so all experiments use identical splits.
-
-Fetch GeoTessera embeddings (if not already done):
+Fetch TESSERA embeddings if not already present:
 
 ```bash
 sbatch slurm_fetch_tessera.sh
@@ -104,22 +115,34 @@ sbatch slurm_fetch_tessera.sh
 
 ## Training
 
-Each training script supports `--prediction_horizon K`, `--input_years N`, and `--fold 0-4`. The SLURM scripts run all five folds as an array job.
+Each training script accepts `--prediction_horizon K`, `--input_years N`, and
+`--fold 0-4`. The SLURM scripts run all five folds as an array job.
 
 ```bash
-# Run all five folds for each modality
 sbatch --export=K=2,INPUT_YEARS=4 slurm_utae.sh
 sbatch --export=K=2,INPUT_YEARS=4 slurm_utae_tessera.sh
 sbatch --export=K=2,INPUT_YEARS=4 slurm_utae_alphaearth.sh
 ```
 
-To run a single fold:
+Single fold:
 
 ```bash
 sbatch --export=K=2,INPUT_YEARS=4 --array=0-0 slurm_utae_tessera.sh
 ```
 
-## Monitoring Jobs
+## Aggregating results
+
+After all folds finish, pool the per-fold confusion matrices logged to WandB:
+
+```bash
+python scripts/aggregate_cv_results.py --modality --datasets sentinel tessera alphaearth
+python scripts/aggregate_cv_results.py --vary K --k_values 1 2 3 4 5 --dataset sentinel
+```
+
+Pooled IoU is the primary metric. Macro mean and standard deviation across
+folds are reported as a diagnostic.
+
+## Monitoring jobs
 
 ```bash
 squeue -u $USER
