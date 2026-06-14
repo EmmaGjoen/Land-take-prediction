@@ -28,7 +28,7 @@ data/*
 *.npy
 geotessera_cache/
 
-# GeoTessera outputs (in case created in root)
+# TESSERA outputs (in case created in root)
 global_0.1_degree_*/
 
 # Jupyter / notebooks
