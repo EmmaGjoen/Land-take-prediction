@@ -15,7 +15,7 @@ from collections import defaultdict
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.config import MASK_DIR, TESSERA_DIR as DEFAULT_TESSERA_DIR, load_metadata
+from src.config import MASK_DIR, load_metadata
 
 logging.basicConfig(
     level=logging.INFO,
