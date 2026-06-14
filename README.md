@@ -1,10 +1,9 @@
-# Land-take Prediction
+# Predicting Land Take Using Satellite Image Time Series: Prediction Horizons, Temporal Sequence Length and Data Representations
 
-Master's thesis at NTNU in collaboration with NINA. The project compares three
-input modalities for binary land take segmentation with U-TAE: raw Sentinel-2
-time series, TESSERA embeddings, and AlphaEarth embeddings. Evaluation uses
-geographic 5-fold cross-validation with pooled confusion-matrix aggregation
-following the PASTIS protocol.
+**Emma Gjøen and Cecilia Møller Blom**  
+Master's Thesis in Computer Science, NTNU, June 2026
+
+We compare three input representations for binary land take segmentation with U-TAE: raw Sentinel-2 time series, TESSERA embeddings, and AlphaEarth embeddings. Evaluation uses geographic 5-fold cross-validation with pooled confusion-matrix aggregation following the PASTIS protocol.
 
 ## Data
 
