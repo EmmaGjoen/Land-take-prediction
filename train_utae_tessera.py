@@ -1,4 +1,4 @@
-"""Train U-TAE on GeoTessera embeddings (128-band, no Sentinel).
+"""Train U-TAE on TESSERA embeddings (128-band, no Sentinel-2).
 
 Counterpart to train_utae.py for the modality comparison experiment.
 Same --prediction_horizon (K) and --input_years (N) interface.
@@ -289,7 +289,7 @@ def main() -> None:
     )
 
     print(f"✓ U-TAE model created")
-    print(f"  Input modality: GeoTessera embeddings (no Sentinel)")
+    print(f"  Input: TESSERA embeddings (no Sentinel-2)")
     print(f"  Channels (C):   {C}  (128 per TESSERA year)")
     print(f"  Timesteps (T):  {T}  (annual)")
     print(f"  Classes:        {CONFIG['num_classes']}")

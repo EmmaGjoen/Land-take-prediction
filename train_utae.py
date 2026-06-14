@@ -1,3 +1,4 @@
+"""Train U-TAE on Sentinel-2 time series for land take segmentation."""
 import json
 import os
 import subprocess

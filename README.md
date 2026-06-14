@@ -1,8 +1,8 @@
 # Land-take Prediction
 
 Master's thesis at NTNU in collaboration with NINA. The project compares three
-input modalities for binary land-take segmentation with U-TAE: raw Sentinel-2
-time series, GeoTessera embeddings, and AlphaEarth embeddings. Evaluation uses
+input modalities for binary land take segmentation with U-TAE: raw Sentinel-2
+time series, TESSERA embeddings, and AlphaEarth embeddings. Evaluation uses
 geographic 5-fold cross-validation with pooled confusion-matrix aggregation
 following the PASTIS protocol.
 
@@ -19,7 +19,7 @@ data/
     annotations_metadata_final.csv
   processed/
     tessera/
-      snapped_to_mask_grid/       GeoTessera embeddings aligned to mask grid (128 dims/year, 2017-2024)
+      snapped_to_mask_grid/       TESSERA embeddings aligned to mask grid (128 dims/year, 2017-2024)
 ```
 
 ## Repository structure
@@ -29,7 +29,7 @@ src/
   config.py                       Paths, shared constants, year ranges
   data/
     sentinel_dataset.py           Sentinel-2 time series dataset
-    tessera_dataset.py            GeoTessera embedding dataset
+    tessera_dataset.py            TESSERA embedding dataset
     alphaearth_dataset.py         AlphaEarth embedding dataset
     splits.py                     Geographic 5-fold CV and legacy random split
     transform.py                  Crop, flip, normalisation
@@ -46,26 +46,33 @@ src/
 
 scripts/
   create_folds.py                 Generate geographic 5-fold CV assignments (run once)
-  fetch_tessera_for_masks.py      Download and snap GeoTessera embeddings to mask grid
+  fetch_tessera_for_masks.py      Download and snap TESSERA embeddings to mask grid
   aggregate_cv_results.py         Pool confusion matrices across folds from WandB
-  analyze_multi_tile_coverage.py  Check tessera coverage across tiles
+  analyze_multi_tile_coverage.py  Check TESSERA coverage across tiles
+  analyze_epoch_stats.py          Print early-stopping and best-epoch statistics from WandB
   generate_tessera_summary.py     Per-tile embedding coverage summary
-  verify_one_mask_by_index.py     Verify spatial alignment for a single tile (SLURM array)
-  summarize_verification.py       Aggregate alignment verification results
-  eda_tessera.py                  Exploratory analysis of tessera embeddings
+  eda_tessera.py                  Exploratory analysis of TESSERA embeddings
+  plot_iou_vs_k.py                Per-fold test IoU vs prediction horizon K
+  plot_iou_vs_n.py                Per-fold test IoU vs input years N
+  plot_qualitative_k.py           Qualitative visualisations for K-slicing experiment
+  plot_qualitative_n.py           Qualitative visualisations for N-slicing experiment
+  plot_qualitative_modality.py    Qualitative comparison across modalities
 
 train_utae.py                     Train U-TAE on Sentinel-2
-train_utae_tessera.py             Train U-TAE on GeoTessera embeddings
+train_utae_tessera.py             Train U-TAE on TESSERA embeddings
 train_utae_alphaearth.py          Train U-TAE on AlphaEarth embeddings
 
-slurm_utae.sh                     SLURM array job, Sentinel experiment (folds 0-4)
-slurm_utae_tessera.sh             SLURM array job, GeoTessera experiment
+submit_modality_v3.sh             Submit modality experiment across all three modalities
+
+slurm_utae.sh                     SLURM array job, Sentinel-2 experiment (folds 0-4)
+slurm_utae_tessera.sh             SLURM array job, TESSERA experiment
 slurm_utae_alphaearth.sh          SLURM array job, AlphaEarth experiment
-slurm_aggregate.sh                Run aggregate_cv_results.py
-slurm_fetch_tessera.sh            Fetch GeoTessera embeddings
-slurm_generate_tessera_summary.sh Summarise tessera coverage
-slurm_verify_tessera_alignment_array.sh  Verify tessera alignment (array)
-slurm_eda_tessera.sh              Run tessera EDA
+slurm_aggregate.sh                Aggregate K-slicing or N-slicing results from WandB
+slurm_aggregate_modality_v3.sh    Aggregate modality experiment results (modality_v3 tag)
+slurm_fetch_tessera.sh            Fetch TESSERA embeddings
+slurm_generate_tessera_summary.sh Summarise TESSERA coverage
+slurm_eda_tessera.sh              Run TESSERA EDA
+slurm_plot_qualitative.sh         Run all qualitative plot scripts
 ```
 
 ## Setup
@@ -101,7 +108,7 @@ experiments share identical splits.
 python scripts/create_folds.py
 ```
 
-Fetch GeoTessera embeddings if not already present:
+Fetch TESSERA embeddings if not already present:
 
 ```bash
 sbatch slurm_fetch_tessera.sh

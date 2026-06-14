@@ -1,5 +1,5 @@
 """
-Exploratory Data Analysis for GeoTessera embeddings.
+Exploratory Data Analysis for TESSERA embeddings.
 
 Usage:
     python scripts/eda_tessera.py

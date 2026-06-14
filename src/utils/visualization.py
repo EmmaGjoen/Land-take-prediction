@@ -1,3 +1,4 @@
+"""WandB mask logging utilities for segmentation predictions."""
 import traceback
 
 import numpy as np

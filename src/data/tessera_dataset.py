@@ -15,7 +15,7 @@ from src.config import (
 
 
 class TesseraDataset(Dataset):
-    """GeoTessera yearly embeddings paired with land-take segmentation masks.
+    """TESSERA yearly embeddings paired with land take segmentation masks.
 
     Years are stacked into a (T, 128, H, W) tensor and zero-padded to
     len(TESSERA_YEARS) so all samples in a batch have the same length.

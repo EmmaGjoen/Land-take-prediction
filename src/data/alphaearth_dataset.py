@@ -1,3 +1,4 @@
+"""AlphaEarth annual embedding Dataset for land take segmentation."""
 import bisect
 from pathlib import Path
 

@@ -1,3 +1,3 @@
-"""Land-Take Prediction Project source package."""
+"""Land Take Prediction source package."""
 
 __version__ = "0.1.0"

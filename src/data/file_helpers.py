@@ -1,3 +1,4 @@
+"""Filename and reference ID helpers shared across datasets."""
 from pathlib import Path
 
 def find_file_by_prefix(base_dir: Path, fid: str) -> Path:

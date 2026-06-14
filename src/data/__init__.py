@@ -1,9 +1,4 @@
-"""
-Data loading and preprocessing utilities for land-take prediction.
-
-This module provides datasets, transforms, and split utilities for
-training segmentation models on HABLOSS satellite imagery.
-"""
+"""Data loading and preprocessing utilities for land take prediction."""
 
 from src.data.sentinel_dataset import SentinelDataset
 from src.data.tessera_dataset import TesseraDataset

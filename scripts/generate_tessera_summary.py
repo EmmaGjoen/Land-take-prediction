@@ -1,5 +1,5 @@
 """
-Generate a summary of which masks have GeoTessera embeddings for which years.
+Generate a summary of which masks have TESSERA embeddings for which years.
 Scans files on disk to create an accurate coverage report.
 
 Usage:

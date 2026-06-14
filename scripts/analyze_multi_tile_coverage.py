@@ -1,5 +1,5 @@
 """
-Analyse the spatial coverage impact of the multi-tile GeoTessera merge fix.
+Analyse the spatial coverage impact of the multi-tile TESSERA merge fix.
 
 For each mask, computes:
   - How many GeoTessera 0.1-degree tiles it overlaps

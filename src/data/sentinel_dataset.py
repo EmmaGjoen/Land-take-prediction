@@ -1,3 +1,4 @@
+"""Sentinel-2 time series Dataset for land take segmentation."""
 import bisect
 from pathlib import Path
 import numpy as np
@@ -27,7 +28,7 @@ class SentinelDataset(Dataset):
         input_years: int | None = None,
         calibrate_mode: bool = False,
     ):
-        """Sentinel-2 time series dataset for land-take segmentation.
+        """Sentinel-2 time series dataset for land take segmentation.
 
         Args:
             ids: list of REFIDs (tile identifiers).
